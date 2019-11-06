@@ -13,84 +13,113 @@ TTTW=2
 samp2Sig = {TTTT:0, TTTJ:1, TTTW:1}
 
 infile = uproot.open("../VVAnalysis/test_tree.root")
+infile2 = uproot.open("../VVAnalysis/test_tree_2.root")
+#["HT", "MET", "l1Pt", "l2Pt", "lepMass", "sphericity", "centrality", "j1Pt", "b1Pt"]
 
-tttt = infile["4top2016"]["testTree"]
-tttj = infile["tttj"]["testTree"]
-tttw = infile["tttw"]["testTree"]
+def getFrame(infile, dirName, typeName, signal):
+    bNames = ["NJets", "NBJets", "HT", "MET", "l1Pt", "l2Pt", "lepMass", "sphericity", "centrality", "j1Pt", "b1Pt"]
+    tree = infile[dirName]["testTree"]
+    frame = tree.pandas.df(bNames)
+    frame["type"] = typeName
+    frame["isSignal"] = signal
+    return frame
 
+tttt_frame = getFrame(infile, "4top2016", "TTTT", 0)
+tttj_frame = getFrame(infile, "tttj", "TTTJ", 1)
+tttw_frame = getFrame(infile, "tttw", "TTTW", 1)
+dy_frame = getFrame(infile2, "DYm50", "DY", 0)
 
-vars = [ "HT", "MET", "l1Pt", "l2Pt", "lepMass", "sphericity", "centrality", "j1Pt", "b1Pt"]
-tttt_frame = tttt.pandas.df(vars)
-tttj_frame = tttj.pandas.df(vars)
-tttw_frame = tttw.pandas.df(vars)
-tttt_frame["type"] = TTTT
-tttj_frame["type"] = TTTJ
-tttw_frame["type"] = TTTW
-tttt_frame["isSignal"] = 0
-tttj_frame["isSignal"] = 1
-tttw_frame["isSignal"] = 1
-
-all_frame = pandas.concat([tttt_frame, tttj_frame, tttw_frame], ignore_index=True)
-
-X_train, X_test, y_train, y_test = train_test_split(all_frame.drop(["isSignal"], axis=1), all_frame["isSignal"], test_size=0.30, random_state=42)
-X_train = X_train.drop(["type"], axis=1)
-
-all_test = pandas.concat([X_test, y_test], axis=1)
-split_test = [all_test[all_test.type==i].drop(["type", "isSignal"], axis=1) for i in range(3)]
+frameList = [tttt_frame, tttj_frame, tttw_frame]
 
 
-mod = xgb.XGBRegressor(
-    gamma=1,                 
-    learning_rate=0.01,
-    max_depth=3,
-    n_estimators=10000,                                                                    
-    subsample=0.8,
-    random_state=34
-)
+number = 1000
+split_train = [tttt_frame.truncate(after=2*number-1).drop(["type"], axis=1), \
+               tttj_frame.truncate(after=number-1).drop(["type"], axis=1), \
+               tttw_frame.truncate(after=number-1).drop(["type"], axis=1)]
+split_test = [tttt_frame.truncate(before=number).drop(["isSignal"], axis=1), \
+              tttj_frame.truncate(before=number).drop(["isSignal"], axis=1), \
+              tttw_frame.truncate(before=number).drop(["isSignal"], axis=1)]
+
+# [tttt_frame.drop(["isSignal"], axis=1), \
+#               tttj_frame.drop(["isSignal"], axis=1), \
+#               tttw_frame.drop(["isSignal"], axis=1)]
+
+
+X_train = pandas.concat(split_train,ignore_index=True).drop(["isSignal"], axis=1)
+y_train = pandas.concat(split_train, ignore_index=True)["isSignal"]
+
+ # all_frame = pandas.concat(frameList).reset_index(drop=True)
+# X_train, X_test, y_train, y_test = train_test_split(all_frame.drop(["isSignal"], axis=1), all_frame["isSignal"], test_size=0.30, random_state=42)
+
+
+# split_train = [X_train[X_train.type=="TTTT"].drop(["type"], axis=1),
+#               X_train[X_train.type=="TTTJ"].drop(["type"], axis=1)]
+# X_train = X_train.drop(["type"], axis=1)
+
+# split_test = [X_test[X_test.type=="TTTT"],
+#               X_test[X_test.type=="TTTJ"]]
+
+
+mod = xgb.XGBRegressor()
 
 mod.fit(X_train, y_train)
 
-split_pred = [mod.predict(frame) for frame in split_test]
-split_truth = [np.empty(len(arr)) for arr in split_pred]
-for i in range(3):
-    split_truth[i].fill(samp2Sig[i])
 
 
-lumi = 35.9
-tttt_scale = lumi*9.2/1022962.2
-tttj_scale = lumi*0.474/100000
-tttw_scale = lumi*0.788/97200
+
+test_pred = [mod.predict(frame.drop("type", axis=1)) for frame in split_test]
+train_pred = [mod.predict(frame.drop(["isSignal"], axis=1)) for frame in split_train]
+
+lumi = 140
+tttt_scale = lumi*9.2/1022962.2*len(tttt_frame)/len(test_pred[0])
+tttj_scale = lumi*0.474/100000*len(tttj_frame)/len(test_pred[1])
+tttw_scale = lumi*0.788/97200*len(tttw_frame)/len(test_pred[2])
 
 
 
 print("iterative test\n")
 for x in range(0, 11):
     i = x*0.1
-    b = len(split_pred[TTTT][split_pred[TTTT] > i])*tttt_scale
-    s = len(split_pred[TTTJ][split_pred[TTTJ] > i])*tttj_scale \
-        + len(split_pred[TTTW][split_pred[TTTW] > i])*tttw_scale
+    b = len(test_pred[0][test_pred[0] > i])*tttt_scale
+    s = len(test_pred[1][test_pred[1] > i])*tttj_scale + len(test_pred[2][test_pred[2] > i])*tttw_scale
     if b <= 0:
         break
 
-    print("%s: s/sqrt(b) = %f     s/sqrt(b+s) = %f " % (i, s/sqrt(b), s/sqrt(s+b)))
+    print("%s: s: %f   b: %f   s/sqrt(b) = %f     s/sqrt(b+s) = %f " % (i, s, b, s/sqrt(b), s/sqrt(s+b)))
 
+
+plt.hist(test_pred[0],color='r',alpha=0.5,label='4top',density=True)
+plt.hist(test_pred[1] ,color='b', alpha=0.5,label='3top+J', density=True)
+plt.hist(test_pred[2] ,color='g', alpha=0.5,label='3top+W', density=True)
+plt.legend()
+plt.show()
+
+plt.hist(train_pred[0],color='r',alpha=0.5,label='4top',density=True)
+plt.hist(train_pred[1] ,color='b', alpha=0.5,label='3top+J', density=True)
+plt.hist(test_pred[2] ,color='g', alpha=0.5,label='3top+W', density=True)
+plt.legend()
+plt.show()
+
+
+exit(0)
+
+    
+split_truth = [np.empty(len(arr)) for arr in test_pred]
+for i in range(len):
+    split_truth[i].fill(samp2Sig[i])
 
 xgb.plot_importance(mod)
 plt.rcParams['figure.figsize'] = [5, 5]
 plt.show()
 
-plt.hist(split_pred[TTTT],color='r',alpha=0.5,label='4top',density=True)
-plt.hist(split_pred[TTTJ],color='g', alpha=0.5,label='3top+J', density=True)
-plt.hist(split_pred[TTTW] ,color='b', alpha=0.5,label='3top+W', density=True)
-plt.legend()
-plt.show()
+
 
 
 
 from sklearn.metrics import roc_auc_score, roc_curve
 
 
-pred_all = np.concatenate(split_pred)
+pred_all = np.concatenate(test_pred)
 truth_all = np.concatenate(split_truth)
 
 
