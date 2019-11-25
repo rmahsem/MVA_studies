@@ -8,105 +8,193 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import roc_auc_score, roc_curve
 
 
-infile4top = uproot.open("../VVAnalysis/test_tree_1108_tttt.root")
-infile3topW = uproot.open("../VVAnalysis/test_tree_1108_tttw.root")
-infile3topJ = uproot.open("../VVAnalysis/test_tree_1108_tttj.root")
-infileAll = uproot.open("../VVAnalysis/full_MC_tree.root")
-# infile2 = uproot.open("../VVAnalysis/test_tree_2.root")
-#["HT", "MET", "l1Pt", "l2Pt", "lepMass", "sphericity", "centrality", "j1Pt", "b1Pt"]
+class treeGroup:
+    def __init__(self, infile, label, xsec, isSig=False):
+        self.f = [self.getFrame(infile, dirN, isSig) for dirN in label]
+        self.xsec = xsec
+        self.label = label
+        self.sumweight = [infile[dirN]["sumweights"].values.sum() for dirN in label]
+        self.extraWeight = [1]*len(self.xsec)
+
+        self.bins = np.linspace(0,1,21)
+        self.histOpt = {"stacked":True, "alpha":0.5, "edgecolor":'black', "histtype":'stepfilled'}
+        self.madeWeight = False
+
+    def extend(self, other):
+        self.f.extend(other.f)
+        self.xsec.extend(other.xsec)
+        self.label.extend(other.label)
+        self.sumweight.extend(other.sumweight)
+        self.extraWeight.extend(other.extraWeight)
+        
+    def makePred(self, func):
+        self.pred = [func.predict(frame.drop(["isSignal","weight"], axis=1)) for frame in self.f]
+
+    def makeWgt(self, lumi=140000):
+        self.wgt = [[mxsec*wgt*mwgt*lumi for wgt in mframe["weight"]] for mxsec, mframe, mwgt in zip(self.xsec, self.f, self.extraWeight)]
+        
+    def getFrame(self, infile, dirName, signal):
+        global bNames
+        dir = infile[dirName]
+        i=1
+        valid = list()
+        while("testTree;%i"%i in dir):
+            valid.append(dir["testTree;%i"%i])
+            i += 1
+        frames = [tree.pandas.df(bNames) for tree in valid]
+        frame = pandas.concat(frames, ignore_index=True)
+        frame["isSignal"] = signal
+        return frame
+
+    def makeTest(self, num, idx=0):
+        self.extraWeight[idx] *= len(self.f[idx])
+        train_return = self.f[idx].truncate(after=num-1)
+        self.f[idx] = self.f[idx].truncate(before=num)
+        self.extraWeight[idx] /= len(self.f[idx])
+        return train_return
+
+    def makePlot(self, cls, isDen=True):
+        if not self.madeWeight:
+            self.makeWgt()
+
+        return cls.hist(self.pred, self.bins, weights=self.wgt, label=self.label, density=isDen, **self.histOpt)
+
+
+    
 bNames = ["NJets", "NBJets", "HT", "MET", "l1Pt", "l2Pt", "lepMass", "centrality", \
           "j1Pt", "j2Pt", "j3Pt", "j4Pt", "j5Pt", "j6Pt", "j7Pt", "j8Pt", "jetMass", "jetDR", \
-          "b1Pt", "b2Pt", "b3Pt", "b4Pt", "DilepCharge",\
+          "b1Pt", "b2Pt", "b3Pt", "b4Pt", "DilepCharge", "Shape1", "Shape2", \
           "weight",]
-# "Shape1", "Shape2",
-def getFrame(infile, dirName, signal):
-    global bNames
-    dir = infile[dirName]
-    i=1
-    valid = list()
-    while("testTree;%i"%i in dir):
-        valid.append(dir["testTree;%i"%i])
-        i += 1
-    frames = [tree.pandas.df(bNames) for tree in valid]
-    frame = pandas.concat(frames, ignore_index=True)
-    frame["isSignal"] = signal
-    return frame
-
-tttt_frame = getFrame(infile4top, "tttt", 0)
-tttj_frame = getFrame(infile3topJ, "tttj", 1)
-tttw_frame = getFrame(infile3topW, "tttw", 1)
-
-ttw_frame = getFrame(infileAll, "ttw", 0)
-ttz_frame = getFrame(infileAll, "ttz", 0)
-tth_frame = getFrame(infileAll, "tth2nonbb", 0)
-ttv = [ttw_frame, ttz_frame, tth_frame]
-
-ttwh_frame = getFrame(infileAll, "ttwh", 0)
-ttwz_frame = getFrame(infileAll, "ttwz", 0)
-ttww_frame = getFrame(infileAll, "ttww", 0)
-tthh_frame = getFrame(infileAll, "tthh", 0)
-ttzh_frame = getFrame(infileAll, "ttzh", 0)
-ttzz_frame = getFrame(infileAll, "ttzz", 0)
-ttvv = [ttwh_frame, ttwz_frame, ttww_frame, tthh_frame, ttzh_frame, ttzz_frame]
-
-www_frame = getFrame(infileAll, "www", 0)
-wwz_frame = getFrame(infileAll, "wwz", 0)
-wzz_frame = getFrame(infileAll, "wzz", 0)
-zzz_frame = getFrame(infileAll, "zzz", 0)
-vvv = [www_frame, wwz_frame, wzz_frame, zzz_frame]
-
-zz_frame = getFrame(infileAll, "zz4l_powheg", 0)
-wz_frame = getFrame(infileAll, "wz3lnu_mg5amcnlo", 0)
-ww_double_frame = getFrame(infileAll, "ww_doubleScatter", 0)
-wpwpjj_frame = getFrame(infileAll, "wpwpjj_ewk", 0)
-vv = [zz_frame, wz_frame, ww_double_frame, wpwpjj_frame]
-
-print len(tttw_frame)
-print len(tttj_frame)
-print len(tttt_frame)
-print len(ttw_frame), len(ttz_frame)
+infile4top = uproot.open("test_tree_1108_tttt.root")
+infile3topW = uproot.open("test_tree_1108_tttw.root")
+infile3topJ = uproot.open("test_tree_1108_tttj.root")
+infileAll = uproot.open("full_MC_tree_only2lep.root")
 
 
-frameList = [tttt_frame, tttj_frame, tttw_frame, ttw_frame, ttz_frame]
-frameFact = [ 4 , 2, 2,    2,   4] 
+top4_g = treeGroup(infile4top, ["tttt"], [0.0092])
+top3_g = treeGroup(infile3topJ, ["tttj"], [0.000474], True)
+tmp_g = treeGroup(infile3topW, ["tttw"], [0.000788], True)
+top3_g.extend(tmp_g)
+ttv_g = treeGroup(infileAll,
+                  ["ttw", "ttz", "tth2nonbb"],
+                  [0.2043, 0.2529, 0.2151])
+ttvv_g = treeGroup(infileAll,
+                  ["ttwh", "ttwz", "ttww", "tthh", "ttzh", "ttzz"],
+                  [0.001582, 0.003884, 0.01150, 0.000757, 0.001535, 0.001982])
+vvv_g = treeGroup(infileAll,
+                   ["www", "wwz", "wzz", "zzz"],
+                   [0.2086, 0.1651, 0.5565, 0.01398])
+vv_g = treeGroup(infileAll,
+                 ["zz4l_powheg", "wz3lnu_mg5amcnlo", "ww_doubleScatter", "wpwpjj_ewk", "vh2nonbb"],
+                 [1.256, 4.4297, 0.16975, 0.03711, 0.9561])
+xg_g = treeGroup(infileAll,
+                 ["ttg_dilep", "wwg", "wzg", "zg", "ttg_lepfromTbar", "ttg_lepfromT", "ggh2zz"],
+                 [0.632, 0.2147, 0.04123, 123.9, 0.769, 0.77, 0.01181])
+extra_g = treeGroup(infileAll,
+                    ["tzq", "st_twll", "DYm50", "ttbar"],
+                    [0.0758, 0.01123, 6020.85, 831.762])
+# missing tGjets, WGtolnug, wjets, 
+fact = 3000
 
-number = 3000
-split_train = [frame.truncate(after=fact*number-1) for frame, fact in zip(frameList, frameFact)]
-split_test = [frame.truncate(before=fact*number) for frame, fact in zip(frameList, frameFact)]
+split_train = list()
+split_train.append(top4_g.makeTest(fact*6))
+split_train.append(top3_g.makeTest(fact*2,0))
+split_train.append(top3_g.makeTest(fact*4,1))
+split_train.append(ttv_g.makeTest(fact*2,0))
+split_train.append(ttv_g.makeTest(fact*2,1))
 
+print [len(i) for i in split_train]
+print [len(i) for i in [top4_g.f[0], top3_g.f[0], top3_g.f[1], ttv_g.f[0], ttv_g.f[1]]]
 
 X_train = pandas.concat(split_train,ignore_index=True).drop(["isSignal", "weight"], axis=1)
 w_train = pandas.concat(split_train,ignore_index=True)["weight"]
 y_train = pandas.concat(split_train, ignore_index=True)["isSignal"]
 
-mod = xgb.XGBRegressor(n_estimators=500, \
+mod = xgb.XGBRegressor(n_estimators=200, \
                        eta = 0.07,\
                        max_depth = 5, \
                        subsample = 0.6, \
                        alpha = 8.0, \
                        gamma = 2.0, \
                        )
-
 fitModel = mod.fit(X_train, y_train, sample_weight=w_train)
 
-
-test_pred = [mod.predict(frame.drop(["isSignal","weight"], axis=1)) for frame in split_test]
 train_pred = [mod.predict(frame.drop(["isSignal", "weight"], axis=1)) for frame in split_train]
 
-ttv_pred = [mod.predict(frame.drop(["isSignal","weight"], axis=1)) for frame in ttv]
-ttvv_pred = [mod.predict(frame.drop(["isSignal","weight"], axis=1)) for frame in ttvv]
-vvv_pred = [mod.predict(frame.drop(["isSignal","weight"], axis=1)) for frame in vvv]
-vv_pred = [mod.predict(frame.drop(["isSignal","weight"], axis=1)) for frame in vv]
+top4_g.makePred(fitModel)
+top3_g.makePred(fitModel)
+ttv_g.makePred(fitModel)
+ttvv_g.makePred(fitModel)
+vvv_g.makePred(fitModel)
+vv_g.makePred(fitModel)
+xg_g.makePred(fitModel)
+extra_g.makePred(fitModel)
+
+isDen = True
+doShow = False
+
+top4_val, _,_ = top4_g.makePlot(plt, isDen)
+top3_val, _,_ = top3_g.makePlot(plt, isDen)
+plt.legend()
+plt.savefig("4vs3.png")
+if doShow: plt.show()
+plt.clf()
+plt.cla()
+
+top3_val, _,_ = top3_g.makePlot(plt, isDen)
+ttv_val, _,_ = ttv_g.makePlot(plt, isDen)
+plt.legend()
+plt.savefig("ttv.png")
+if doShow: plt.show()
+plt.clf()
+plt.cla()
+
+top3_val, _,_ = top3_g.makePlot(plt, isDen)
+ttvv_val, _,_ = ttvv_g.makePlot(plt, isDen)
+plt.legend()
+plt.savefig("ttvv.png")
+if doShow: plt.show()
+plt.clf()
+plt.cla()
+
+top3_val, _,_ = top3_g.makePlot(plt, isDen)
+vvv_val, _,_ = vvv_g.makePlot(plt, isDen)
+plt.legend()
+plt.savefig("vvv.png")
+if doShow: plt.show()
+plt.clf()
+plt.cla()
+
+top3_val, _,_ = top3_g.makePlot(plt, isDen)
+vv_val, _,_ = vv_g.makePlot(plt, isDen)
+plt.legend()
+plt.savefig("vv.png")
+if doShow: plt.show()
+plt.clf()
+plt.cla()
+
+top3_val, _,_ = top3_g.makePlot(plt, isDen)
+xg_val, _,_ = xg_g.makePlot(plt, isDen)
+plt.legend()
+plt.savefig("xg.png")
+if doShow: plt.show()
+plt.clf()
+plt.cla()
+
+top3_val, _,_ = top3_g.makePlot(plt, isDen)
+extra_val, _,_ = extra_g.makePlot(plt, isDen)
+plt.legend()
+plt.savefig("extra.png")
+if doShow: plt.show()
+plt.clf()
+plt.cla()
+
+exit()
 
 
-lumi = 140
-tttt_scale = lumi*9.2/2496900*1/3*len(tttt_frame)/len(test_pred[0])
-tttj_scale = lumi*0.474/484000*len(tttj_frame)/len(test_pred[1])
-tttw_scale = lumi*0.788/497200*len(tttw_frame)/len(test_pred[2])
-
-print tttt_scale
 
 print("iterative test\n")
+print("3vs4 top")
 for x in range(0, 11):
     i = x*0.1
     b = len(test_pred[0][test_pred[0] > i])*tttt_scale
@@ -117,99 +205,66 @@ for x in range(0, 11):
     print("%s: s: %f   b: %f   s/sqrt(b) = %f     s/sqrt(b+s) = %f " % (i, s, b, s/sqrt(b), s/sqrt(s+b)))
 
 
-plt.hist(test_pred[0], np.linspace(0,1,21), color='r',alpha=0.5,label='4top',density=True)
-plt.hist(test_pred[1], np.linspace(0,1,21), color='b', alpha=0.5,label='3top+J', density=True)
-plt.hist(test_pred[2], np.linspace(0,1,21), color='g', alpha=0.5,label='3top+W', density=True)
-plt.hist(test_pred[3], np.linspace(0,1,21), color='orange', alpha=0.5,label='ttw', density=True)
-plt.hist(test_pred[4], np.linspace(0,1,21), color='purple', alpha=0.5,label='ttz', density=True)
-plt.hist(test_pred[4], np.linspace(0,1,21), color='firebrick', alpha=0.5,label='tth', density=True)
+
+
+    
+top3_val, _,_ = plt.hist(top3_pred, bins, weights=top3_wgt, label=top3_label, density=isDen, **histOpt)
+top4_val, _,_ = plt.hist(top4_pred, bins, weights=top4_wgt, label=top4_label, density=isDen, **histOpt)
+plt.legend()
+plt.savefig("4vs3.png")
+plt.show()
+
+top3_val, _,_ = plt.hist(top3_pred, bins, weights=top3_wgt, label=top3_label, density=isDen, **histOpt)
+ttv_val, _,_ = plt.hist(ttv_pred, bins, weights=ttv_wgt, label=ttv_label, density=isDen, **histOpt)
 plt.legend()
 plt.savefig("ttv.png")
 plt.show()
 
-
-plt.hist(test_pred[1], np.linspace(0,1,21), color='b', alpha=0.5,label='3top+J', density=True)
-plt.hist(test_pred[2], np.linspace(0,1,21), color='g', alpha=0.5,label='3top+W', density=True)
-plt.hist(vvv_pred[0], np.linspace(0,1,21), color='y', alpha=0.5,label='www', density=True)
-plt.hist(vvv_pred[1], np.linspace(0,1,21), color='c', alpha=0.5,label='wwz', density=True)
-plt.hist(vvv_pred[2], np.linspace(0,1,21), color='m', alpha=0.5,label='wzz', density=True)
-plt.hist(vvv_pred[3], np.linspace(0,1,21), color='lightcoral', alpha=0.5,label='zzz', density=True)
-plt.legend()
-plt.savefig("vvv.png")
-plt.show()
-
-plt.hist(test_pred[1], np.linspace(0,1,21), color='b', alpha=0.5,label='3top+J', density=True)
-plt.hist(test_pred[2], np.linspace(0,1,21), color='g', alpha=0.5,label='3top+W', density=True)
-plt.hist(ttvv_pred[0], np.linspace(0,1,21), color='royalblue', alpha=0.5,label='ttwh', density=True)
-plt.hist(ttvv_pred[1], np.linspace(0,1,21), color='midnightblue', alpha=0.5,label='ttwz', density=True)
-plt.hist(ttvv_pred[2], np.linspace(0,1,21), color='darkblue', alpha=0.5,label='ttww', density=True)
-plt.hist(ttvv_pred[3], np.linspace(0,1,21), color='mediumblue', alpha=0.5,label='tthh', density=True)
-plt.hist(ttvv_pred[4], np.linspace(0,1,21), color='blue', alpha=0.5,label='ttzh', density=True)
-plt.hist(ttvv_pred[5], np.linspace(0,1,21), color='mediumpurple', alpha=0.5,label='ttzz', density=True)
-
+top3_val, _,_ = plt.hist(top3_pred, bins, weights=top3_wgt, label=top3_label, density=isDen, **histOpt)
+ttvv_val, _,_ = plt.hist(ttvv_pred, bins, weights=ttvv_wgt, label=ttvv_label, density=isDen, **histOpt)
 plt.legend()
 plt.savefig("ttvv.png")
 plt.show()
 
-plt.hist(test_pred[1], np.linspace(0,1,21), color='b', alpha=0.5,label='3top+J', density=True)
-plt.hist(test_pred[2], np.linspace(0,1,21), color='g', alpha=0.5,label='3top+W', density=True)
-plt.hist(vv_pred[0], np.linspace(0,1,21), color='royalblue', alpha=0.5,label='zz', density=True)
-plt.hist(vv_pred[1], np.linspace(0,1,21), color='midnightblue', alpha=0.5,label='wz', density=True)
-plt.hist(vv_pred[2], np.linspace(0,1,21), color='darkblue', alpha=0.5,label='ww', density=True)
-plt.hist(vv_pred[3], np.linspace(0,1,21), color='mediumblue', alpha=0.5,label='ww_ewk', density=True)
+top3_val, _,_ = plt.hist(top3_pred, bins, weights=top3_wgt, label=top3_label, density=isDen, **histOpt)
+vvv_val, _,_ = plt.hist(vvv_pred, bins, weights=vvv_wgt, label=vvv_label, density=isDen, **histOpt)
+plt.legend()
+plt.savefig("vvv.png")
+plt.show()
+
+top3_val, _,_ = plt.hist(top3_pred, bins, weights=top3_wgt, label=top3_label, density=isDen, **histOpt)
+vv_val, _,_ = plt.hist(vv_pred, bins, weights=vv_wgt, label=vv_label, density=isDen, **histOpt)
 plt.legend()
 plt.savefig("vv.png")
 plt.show()
-# plt.hist(train_pred[0], np.linspace(0,1,21),color='r',alpha=0.5,label='4top',density=True)
-# plt.hist(train_pred[1], np.linspace(0,1,21) ,color='b', alpha=0.5,label='3top+J', density=True)
-# plt.hist(train_pred[2], np.linspace(0,1,21) ,color='g', alpha=0.5,label='3top+W', density=True)
-# plt.legend()
-# plt.show()
-
-# def sortDict(dict):
-#     return sorted(dict.items(), key=lambda kv: kv[1], reverse=True)
 
 
-# pred_all = np.concatenate(test_pred)
-# truth_all = pandas.concat(split_test)["isSignal"]
+def sortDict(dict):
+    return sorted(dict.items(), key=lambda kv: kv[1], reverse=True)
 
 
-# fpr, tpr,_ = roc_curve(truth_all, pred_all)
-# auc_test = roc_auc_score(truth_all, pred_all)
+pred_all = np.concatenate(test_pred[:3])
+truth_all = pandas.concat(split_test[:3])["isSignal"]
 
-# print "AUC", auc_test
 
-# import pprint
+fpr, tpr,_ = roc_curve(truth_all, pred_all)
+auc_test = roc_auc_score(truth_all, pred_all)
 
-# print
-# # importance_type = ['weight', 'gain', 'cover', 'total_gain', 'total_cover']
-# print "\ngain:"
-# pprint.pprint(sortDict(fitModel.get_booster().get_score(importance_type='gain')))
-# print "\nweight:"
-# pprint.pprint(sortDict(fitModel.get_booster().get_score(importance_type='weight')))
-# print "\ncoverage:"
-# pprint.pprint(sortDict(fitModel.get_booster().get_score(importance_type='cover')))
+print "AUC", auc_test
+plt.plot(fpr,tpr, label="test AUC = {:.3f}".format(auc_test))
+plt.legend()
+plt.show()
+
+import pprint
+
+print
+# importance_type = ['weight', 'gain', 'cover', 'total_gain', 'total_cover']
+print "\ngain:"
+pprint.pprint(sortDict(fitModel.get_booster().get_score(importance_type='gain')))
+print "\nweight:"
+pprint.pprint(sortDict(fitModel.get_booster().get_score(importance_type='weight')))
+print "\ncoverage:"
+pprint.pprint(sortDict(fitModel.get_booster().get_score(importance_type='cover')))
  
 
-# def calcChangeAUC(Xtrain, ytrain, Xtest, test_truth, oldauc):
-#     mod = xgb.XGBRegressor()
-#     fitModel = mod.fit(Xtrain, ytrain)
-#     test_pred = mod.predict(Xtest)
-#     return oldauc - roc_auc_score(test_truth, test_pred)
-
-
-# # auc_changes = dict()
-# # for var in bNames:
-# #     X_testNew = pandas.concat(split_test).drop([var, "isSignal", "weight"], axis=1)
-# #     y_testNew = pandas.concat(split_test)["isSignal"]
-# #     change = calcChangeAUC(X_train.drop([var],axis=1), y_train, X_testNew, y_testNew, auc_test)
-# #     auc_changes[var] = change
-# #     print var, change
-
-# # print "\nChange in AUC:"
-# # pprint.pprint(sortDict(auc_changes))
-
     
-# plt.plot(fpr,tpr, label="test AUC = {:.3f}".format(auc_test))
-# plt.legend()
-# plt.show()
