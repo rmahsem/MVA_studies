@@ -1,0 +1,9 @@
+*.png
+*.out
+*.json
+*.root
+*~
+env*
+*.log
+*.directory
+*.pyc
