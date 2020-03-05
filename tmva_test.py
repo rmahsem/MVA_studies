@@ -2,7 +2,6 @@
 import sys
 import os
 from os import environ, path
-from TMVA_cfg import batchs, methodList
 import ROOT
 import copy
 import numpy as np
@@ -12,7 +11,7 @@ ROOT.gROOT.SetBatch(True)
 
 usevar = ["NJets", "NBJets", "HT", "MET", "l1Pt", "l2Pt", "lepMass", "centrality", "j1Pt", "j2Pt", "j3Pt", "j4Pt", "j5Pt", "j6Pt", "j7Pt", "j8Pt", "jetMass", "jetDR", "b1Pt", "b2Pt", "b3Pt", "b4Pt", "Shape1", "Shape2", "NlooseBJets", "NtightBJets", "NlooseLeps",]
 specVar= ["newWeight"]
-outname = 'BDT_FT_2' #Output file name
+outname = 'BDT_testing' #Output file name
 UseMethod = ["BDTCW"] #More methods in the cfg
 runTMVA = True
 
@@ -30,7 +29,7 @@ if runTMVA:
 
     analysistype = 'AnalysisType=Classification'                     
     # analysistype = 'AnalysisType=MultiClass' #For many backgrounds
-    factoryOptions = ["!V", "!Silent", "Color", "DrawProgressBar", "Transformations=I", analysistype]
+    factoryOptions = [ "!Silent", "Color", "DrawProgressBar", "Transformations=I", analysistype]
     ROOT.TMVA.Tools.Instance()
     factory = ROOT.TMVA.Factory("TMVAClassification", fout,":".join(factoryOptions))
     # Weight folder name to store the output
@@ -40,32 +39,39 @@ if runTMVA:
     for var in usevar:
         print var
         dataset.AddVariable(var) #my int variables have a n_* in the name
-
+    for var in specVar:
+        dataset.AddSpectator(var)
 
     st = list()
     bot = list()
     bt = list()
 
+    sigSum = np.sum([pair[1] for pair in sigNames])
+    bkgSum = np.sum([pair[1] for pair in bkgNames])
 
+    addcut = 'HT>150&&DilepCharge>0&&MET>25'
+    
     for pair in sigNames:
         sumweight = infile.FindObjectAny("sumweight_%s" % pair[0])
+        tree = infile.Get(pair[0])
         #dataset.AddSignalTree(infile.Get(pair[0]), pair[1]*sumweight.GetBinContent(2)/sumweight.GetBinContent(1))
-        dataset.AddSignalTree(infile.Get(pair[0]))
+        dataset.AddSignalTree(tree, pair[1]/sigSum/tree.GetEntries(addcut))
 
     for pair in bkgNames:
         sumweight = infile.FindObjectAny("sumweight_%s" % pair[0])
+        tree = infile.Get(pair[0])
         #dataset.AddBackgroundTree(infile.Get(pair[0]), pair[1]/sumweight.GetBinContent(1))
-        dataset.AddBackgroundTree(infile.Get(pair[0]))
+        dataset.AddBackgroundTree(tree, pair[1]/bkgSum/tree.GetEntries(addcut))
 
-    dataset.SetBackgroundWeightExpression("newWeight")
-    dataset.SetSignalWeightExpression("newWeight")
+    # dataset.SetBackgroundWeightExpression("newWeight")
+    # dataset.SetSignalWeightExpression("newWeight")
 
-    addcut = 'HT>150&&DilepCharge>0&&MET>25' 
+    
     cut = ROOT.TCut(addcut)
 
-    modelname = 'trained_weights' #For the output name
+    modelname = 'trained_weights' #For the output name"NormMode=EqualNumEvents"
 
-    dataset.PrepareTrainingAndTestTree(cut, ":".join(["SplitMode=Random:NormMode=NumEvents", "!V" ]))
+    dataset.PrepareTrainingAndTestTree(cut, ":".join(["SplitMode=Random:NormMode=EqualNumEvents",]))
     # ROOT.TMVA.VariableImportance(dataset)
 
     # "CrossEntropy"
@@ -75,7 +81,7 @@ if runTMVA:
     # "SDivSqrtSPlusB"
     sepType="GiniIndex"
 
-    methodInput =["!H", "!V", "NTrees=500", "nEventsMin=150", "MaxDepth=5", "BoostType=AdaBoost", "AdaBoostBeta=0.5", "SeparationType={}".format(sepType),"nCuts=20","PruneMethod=NoPruning","IgnoreNegWeightsInTraining",]
+    methodInput =["!H", "NTrees=500", "nEventsMin=150", "MaxDepth=5", "BoostType=AdaBoost", "AdaBoostBeta=0.5", "SeparationType={}".format(sepType),"nCuts=20","PruneMethod=NoPruning","IgnoreNegWeightsInTraining",]
     # ["!H","!V","NTrees=500","MaxDepth=8","BoostType=Grad","Shrinkage=0.01","UseBaggedBoost","BaggedSampleFraction=0.50","SeparationType={}".format(sepType),"nCuts=50"]
     # 
      # ["!H","!V","NTrees=500","MaxDepth=8","BoostType=Grad","Shrinkage=0.01","UseBaggedBoost","BaggedSampleFraction=0.50","SeparationType={}".format(sepType),"nCuts=50"]
@@ -99,149 +105,45 @@ if runTMVA:
 
 
 
-f_out = ROOT.TFile(outname+".root")
- 
-normfact = 10
-# xmin,xmax = -0.55, 0.95
-# xmin,xmax = -0.4, 0.7
-xmin,xmax = -0.45, 0.95
-Histo_training_S = ROOT.TH1D('Histo_training_S' , '%i x S (Train)'%normfact , 25 , xmin,xmax)
-Histo_training_B = ROOT.TH1D('Histo_training_B' , 'B (Train)'               , 25 , xmin,xmax)
-Histo_testing_S = ROOT.TH1D('Histo_testing_S'   , '%i x S (Test)'%normfact  , 25 , xmin,xmax)
-Histo_testing_B = ROOT.TH1D('Histo_testing_B'   , 'B (Test)'                , 25 , xmin,xmax)
- 
-# Fetch the trees of events from the root file 
-TrainTree = f_out.Get("MVA_weights/TrainTree") 
-TestTree = f_out.Get("MVA_weights/TestTree") 
- 
-# Cutting on these objects in the trees will allow to separate true S/B SCut_Tree = 'classID>0.5'
-BCut_Tree = 'classID<0.5'
-SCut_Tree = 'classID>0.5'
- 
-TrainTree.Draw("BDT>>Histo_training_S",("%i*weight*("%normfact)+SCut_Tree+")")
-TrainTree.Draw("BDT>>Histo_training_B","weight*("+BCut_Tree+")")
-TestTree.Draw( "BDT>>Histo_testing_S",("%i*weight*("%normfact)+SCut_Tree+")")
-TestTree.Draw( "BDT>>Histo_testing_B","weight*("+BCut_Tree+")")
- 
-# Create the color styles
-Histo_training_S.SetLineColor(2)
-Histo_training_S.SetMarkerColor(2)
-Histo_training_S.SetFillColor(2)
-Histo_testing_S.SetLineColor(2)
-Histo_testing_S.SetMarkerColor(2)
-Histo_testing_S.SetFillColor(2)
- 
-Histo_training_B.SetLineColor(4)
-Histo_training_B.SetMarkerColor(4)
-Histo_training_B.SetFillColor(4)
-Histo_testing_B.SetLineColor(4)
-Histo_testing_B.SetMarkerColor(4)
-Histo_testing_B.SetFillColor(4)
- 
-# Histogram fill styles
-Histo_training_S.SetFillStyle(4501)
-Histo_training_B.SetFillStyle(4501)
-Histo_training_S.SetFillColorAlpha(Histo_training_S.GetLineColor(),0.2)
-Histo_training_B.SetFillColorAlpha(Histo_training_B.GetLineColor(),0.2)
-Histo_testing_S.SetFillStyle(0)
-Histo_testing_B.SetFillStyle(0)
- 
-# Histogram marker styles
-Histo_testing_S.SetMarkerStyle(20)
-Histo_testing_B.SetMarkerStyle(20)
-Histo_testing_S.SetMarkerSize(0.7)
-Histo_testing_B.SetMarkerSize(0.7)
- 
-# Set titles
-Histo_training_S.GetXaxis().SetTitle("Discriminant")
-Histo_training_S.GetYaxis().SetTitle("Counts/Bin")
- 
-# Draw the objects
-# c1 = ROOT.TCanvas("c1","",800,600)
-c1 = ROOT.TCanvas("c1","",400,400)
-p1 = ROOT.TPad("p1","p1",0., 0.23, 1.0, 1.0)
-p2 = ROOT.TPad("p2","p2",0., 0.0, 1.0, 0.23)
-p2.Draw()
-# p2.cd()
-p1.Draw()
-# p1.SetLogy(1)
-p1.SetLogy(0)
-p1.cd()
-ROOT.gStyle.SetOptStat(0)
-ROOT.gStyle.SetOptTitle(0)
-Histo_training_S.Draw("HIST")
-Histo_training_B.Draw("HISTSAME")
-Histo_testing_S.Draw("EPSAME")
-Histo_testing_B.Draw("EPSAME")
+lumi=140000
 
-# Reset the y-max of the plot
-ymax = max([h.GetMaximum() for h in [Histo_training_S,Histo_training_B,Histo_testing_S,Histo_testing_B] ])
-ymax *=1.4
-Histo_training_S.SetMaximum(ymax)
-Histo_training_S.SetMinimum(0.01)
- 
-# Create Legend
-c1.cd(1).BuildLegend( 0.42+0.3,  0.72,  0.57+0.3,  0.88).SetFillColor(0)
- 
+import matplotlib.pyplot as plt
+import uproot, pandas,math
 
-auc = -1.
-
-# make soverb pad
-soverb_cumulative = Histo_testing_S.Clone("soverb_cumulative")
-soverb_cumulative.GetYaxis().SetRangeUser(0.01,9.)
-soverb_cumulative.GetYaxis().SetNdivisions(505)
-soverb_cumulative.GetYaxis().SetTitleSize(0.11)
-soverb_cumulative.GetYaxis().SetTitleOffset(0.31)
-soverb_cumulative.GetYaxis().SetLabelSize(0.13)
-soverb_cumulative.GetYaxis().CenterTitle()
-soverb_cumulative.GetXaxis().SetLabelSize(0.0)
-soverb_cumulative.GetXaxis().SetTitle("")
-soverb_cumulative.GetXaxis().SetTickSize(0.06)
-soverb_cumulative.SetMarkerStyle(20)
-soverb_cumulative.SetMarkerSize(0.7)    
-
-p2.cd()
-# arrs = np.array(list(Histo_training_S))/normfact
-# arrb = np.array(list(Histo_training_B))
-arrs = np.array(list(Histo_testing_S))/normfact
-arrb = np.array(list(Histo_testing_B))
-cumsum_s = np.cumsum(arrs[::-1])[::-1]
-cumsum_b = np.cumsum(arrb[::-1])[::-1]
-auc = abs(np.trapz(cumsum_s/np.sum(arrs),cumsum_b/np.sum(arrb)))
-cumsum = (cumsum_s/cumsum_b)
-cumsum = np.array([i if i==i else 0 for i in cumsum])
-
-cumsum[np.abs(cumsum)>1e5] = 1000.
+f_out = uproot.open(outname+".root")
 
 
-cumsum_sqrtsb = cumsum_s/np.sqrt(cumsum_s+cumsum_b)
-cumsum_sqrtsb[np.abs(cumsum_sqrtsb)>1e5] = 1000.
-# for ibz, val in enumerate(cumsum):
-#     soverb_cumulative.SetBinContent(ibz,val)
-#     soverb_cumulative.SetBinError(ibz,0.)
-for ibz, val in enumerate(cumsum_sqrtsb):
-    if np.isnan(val): continue
-    soverb_cumulative.SetBinContent(ibz,val*10)
-    soverb_cumulative.SetBinError(ibz,0.)
-maxsb = max(list(soverb_cumulative))
-# print "GREP", maxsb, auc, max_vars, ",".join(new_vars)
-soverb_cumulative.SetLineColor(ROOT.kBlue-2)
-soverb_cumulative.SetMarkerColor(ROOT.kBlue-2)
-# soverb_cumulative.GetYaxis().SetTitle("Cumulative s/b")
-soverb_cumulative.GetYaxis().SetTitle("Cumulative s/#sqrt{s+b}")
-soverb_cumulative.GetYaxis().SetRangeUser(0.01,2.)
-soverb_cumulative.Draw("samepe")
+test_tree = f_out["MVA_weights"]["TestTree"].pandas.df(["*"])
+train_tree = f_out["MVA_weights"]["TrainTree"].pandas.df(["classID"])
 
-p1.cd()
-l1=ROOT.TLatex()
-l1.SetNDC();
-l1.DrawLatex(0.26,0.93,"BDT [AUC = %.3f] [%.3f]" % (auc,maxsb))
+sigFac = (len(test_tree[test_tree["classID"]==0])+len(train_tree[train_tree["classID"]==0]))/len(test_tree[test_tree["classID"]==0])
+bkgFac = (len(test_tree[test_tree["classID"]==1])+len(train_tree[train_tree["classID"]==1]))/len(test_tree[test_tree["classID"]==1])
 
-l1.SetTextSize(l1.GetTextSize()*0.5)
-l1.DrawLatex(0.76,0.63,"N^{sig}_{train} = %.1f" % (Histo_training_S.Integral()/normfact))
-l1.DrawLatex(0.76,0.58,"N^{sig}_{test} = %.1f" % (Histo_testing_S.Integral()/normfact))
-l1.DrawLatex(0.76,0.53,"N^{bg}_{train} = %.1f" % Histo_training_B.Integral())
-l1.DrawLatex(0.76,0.48,"N^{bg}_{test} = %.1f" % Histo_testing_B.Integral())
- 
-pname = 'validation_bdt_{}.pdf'.format(outname.rsplit(".",1)[0].split("/")[-1])
-c1.Print(pname)
+signal_df = test_tree[test_tree["classID"] == 0]
+background_df = test_tree[test_tree["classID"] == 1]
+
+def getWeight(df, lumi, fc):
+    return lumi*df["newWeight"]*fc
+
+def plotFunc(sig, bkg, lumi, name, bins):
+    fig, ax = plt.subplots()
+    bkgHist = ax.hist(x=bkg[name], bins=bins, weights=getWeight(bkg, lumi, bkgFac),label="Background", histtype="step", linewidth=1.5)
+    sigHist = ax.hist(x=sig[name], bins=bins, weights=getWeight(sig, lumi, sigFac), label="Signal", histtype="step",linewidth=1.5)
+    ax.legend()
+    ax.set_xlabel(name)
+    ax.set_ylabel("Events/bin")
+    ax.set_title("Lumi = {} ifb".format(lumi/1000))
+    fig.tight_layout()
+    plt.show()
+
+#plotFunc(signal_df, background_df, 140000, "BDT", np.linspace(-0.7,0.7,51))
+
+sbBins = np.linspace(-0.75, 0.75, 51)
+b = np.histogram(background_df["BDT"], bins=sbBins, weights=getWeight(background_df, lumi, bkgFac))[0]
+s = np.histogram(signal_df["BDT"], bins=sbBins, weights=getWeight(signal_df,lumi, sigFac))[0]
+
+import Utilities.helper as helper
+
+helper.StoB(s,b, sbBins, "tester", noSB=True)
+
+

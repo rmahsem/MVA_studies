@@ -39,7 +39,7 @@ def approxLikelihood(sig_hist, bkgd_hist):
         term2 += sig
     return math.sqrt(2*(term1 - term2))
 
-def StoB(sig, back, bins, name):
+def StoB(sig, back, bins, name, noSB=False):
     nSig = [np.sum(sig[i:]) for i in range(len(bins))]
     nBack = [np.sum(back[i:]) for i in range(len(bins))]
     StoB  = [s/math.sqrt(b) if b > 0 else 0 for s, b in zip(nSig, nBack)]
@@ -47,11 +47,12 @@ def StoB(sig, back, bins, name):
 
     StoBmb = bins[StoB.index(max(StoB))]
     StoSBmb = bins[StoSB.index(max(StoSB))]
-    
-    plt.plot(bins, StoB, label="$S/\sqrt{B}=%.3f$\n cut=%.2f"%(max(StoB), StoBmb))
-    plt.plot(bins, StoSB, label="$S/\sqrt{S+B}=%.3f$\n cut=%.2f"%(max(StoSB), StoSBmb))
-    plt.plot(np.linspace(0,1,5), [max(StoB)]*5, linestyle=':')
-    plt.plot(np.linspace(0,1,5), [max(StoSB)]*5, linestyle=':')
+
+    if not noSB:
+        p = plt.plot(bins, StoB, label="$S/\sqrt{B}=%.3f$\n cut=%.2f"%(max(StoB), StoBmb))
+        plt.plot(np.linspace(bins[0],bins[-1],5), [max(StoB)]*5, linestyle=':', color=p[-1].get_color())
+    p = plt.plot(bins, StoSB, label="$S/\sqrt{S+B}=%.3f$\n cut=%.2f"%(max(StoSB), StoSBmb))
+    plt.plot(np.linspace(bins[0],bins[-1],5), [max(StoSB)]*5, linestyle=':', color=p[-1].get_color())
     plt.legend()
     plt.xlabel("BDT value", horizontalalignment='right', x=1.0)
     plt.ylabel("A.U.", horizontalalignment='right', y=1.0)

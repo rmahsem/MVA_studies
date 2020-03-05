@@ -3,27 +3,26 @@ import numpy as np
 import xgboost as xgb
 import warnings
 warnings.filterwarnings("ignore")
+import Utilities.helper as helper
 
 
-import helper
 
+#inputs to change
 bins = np.linspace(0,1,41)
 doShow = False
-saveDir = "3top_allBkg"
+saveDir = "3top_blah"
 saveModelName = None
+
 
 helper.saveDir = saveDir
 helper.doShow = doShow
+from Utilities.samples import *
 
-from samples import *
 
 # Create Train and Test groups
-
 split_train = list()
-for sample in all_samples:
-    # skip 4top
-    if sample == other_g:
-        continue
+#for sample in all_samples:
+for sample in special_samples:
     for i in range(len(sample)):
         nEvt = len(sample[i])
         if nEvt > 1000:
@@ -35,8 +34,9 @@ for frame in all_samples:
     print([(name, len(i)) for i, name in zip(frame.f, frame.label)])
 print()
 
-# Setup XGBoost stuff
 
+
+# Setup XGBoost stuff
 X_train = pandas.concat(split_train,ignore_index=True).drop(["isSignal", "weight"], axis=1)
 y_train = pandas.concat(split_train, ignore_index=True)["isSignal"]
 
@@ -50,26 +50,19 @@ for fr in split_train:
     else: 
         bkg_wgt.append(np.sum(fr["weight"]))
 
-#weight nonsense
 
+#weight nonsense
+# use a "mean xsec" method to keep weights O(1) while including relative weights between xsec
 sig_wgt = np.array(sig_wgt)
 bkg_wgt = np.array(bkg_wgt)
-tot_mean_wgt = np.concatenate([10*sig_wgt/np.mean(sig_wgt), bkg_wgt/np.mean(bkg_wgt)])
-tot_meanTrim_wgt = np.concatenate([sig_wgt/np.mean(sig_wgt), bkg_wgt/np.mean(sorted(bkg_wgt)[1:-1])])
-tot_norm_wgt = np.concatenate([sig_wgt/np.mean(sig_wgt), bkg_wgt/np.sum(bkg_wgt)])
-wgt_mean_train = np.concatenate([wgt*np.ones(len(frame)) for frame, wgt in zip(split_train, tot_mean_wgt)])
-wgt_meanTrim_train = np.concatenate([wgt*np.ones(len(frame)) for frame, wgt in zip(split_train, tot_meanTrim_wgt)])
-wgt_norm_train = np.concatenate([wgt*np.ones(len(frame)) for frame, wgt in zip(split_train, tot_norm_wgt)])
-w_train = wgt_mean_train
-# w_train = wgt_meanTrim_train
-# w_train = wgt_norm_train
-# w_train = scale_train
-# w_train = np.ones(len(X_train))
+tot_mean_wgt = np.concatenate([sig_wgt/np.mean(sig_wgt), bkg_wgt/np.mean(bkg_wgt)])
+w_train = np.concatenate([wgt*np.ones(len(frame)) for frame, wgt in zip(split_train, tot_mean_wgt)])
 
 print( "In weights:", np.unique(w_train))
 
-# XGBoost training
 
+
+# XGBoost training
 dtrain = xgb.DMatrix(X_train, label=y_train, weight=w_train)
 
 evallist  = [(dtrain,'train')]
@@ -91,8 +84,8 @@ if saveModelName:
 for frame in all_samples:
     frame.makePred(fitModel)
 
-# Setting up background
     
+# Setting up background
 bkg_g = None
 from copy import deepcopy
 for frame in [other_g, ttv_g, ttvv_g, vvv_g, vv_g, xg_g, extra_g]:
@@ -116,8 +109,8 @@ helper.createPlot(bkg_g, signal_g, "AllBkg", bins)
 # get Signal/Background ratio
 
 fineBin = np.linspace(0,1,101)
-helper.StoB(signal_g.getHist(fineBin), other_g.getHist(fineBin), fineBin, "4top")
-helper.StoB(signal_g.getHist(fineBin), bkg_g.getHist(fineBin), fineBin, "All")
+helper.StoB(signal_g.getHist(fineBin), other_g.getHist(fineBin), fineBin, "4top", noSB=True)
+helper.StoB(signal_g.getHist(fineBin), bkg_g.getHist(fineBin), fineBin, "All", noSB=True)
 
 # Get approximated Likelihood values
 
