@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import math
 import numpy as np
 from sklearn.metrics import roc_curve, roc_auc_score
-
+import uproot
 
 saveDir = "."
 doShow = False
@@ -40,6 +40,7 @@ def approxLikelihood(sig_hist, bkgd_hist):
     return math.sqrt(2*(term1 - term2))
 
 def StoB(sig, back, bins, name, noSB=False):
+    global doShow
     nSig = [np.sum(sig[i:]) for i in range(len(bins))]
     nBack = [np.sum(back[i:]) for i in range(len(bins))]
     StoB  = [s/math.sqrt(b) if b > 0 else 0 for s, b in zip(nSig, nBack)]
@@ -58,8 +59,7 @@ def StoB(sig, back, bins, name, noSB=False):
     plt.ylabel("A.U.", horizontalalignment='right', y=1.0)
     plt.savefig("%s/StoB_%s.png" % (saveDir, name))
     if doShow: plt.show()
-    plt.clf()
-    plt.cla()
+    plt.close()
     
 
 def createPlot(p1, p2, name, bins):
@@ -90,8 +90,7 @@ def createPlot(p1, p2, name, bins):
     #plt.yscale('log')
     plt.savefig("%s/%s_shape.png"%(saveDir, name))
     if doShow: plt.show()
-    plt.clf()
-    plt.cla()
+    plt.close()
 
     
 from math import log10
@@ -106,4 +105,47 @@ def findScale(s, b):
             scale *= 2
     return prevS
 
-     
+def plotRocTMVA(outname):
+    global doshow
+    global saveDir
+    hist = uproot.open("{}/BDT.root".format(outname))["MVA_weights/Method_BDT/BDT"]["MVA_BDT_rejBvsS"]
+    fig, ax = plt.subplots()
+    
+    y = hist.edges
+    x = 1-np.concatenate((hist.values, [0]))
+    ax.plot(x, y, label="test AUC = {:.3f}".format(sum(hist.values)/100))
+    
+    ax.plot(np.linspace(0,1,5), np.linspace(0,1,5), linestyle=':')
+    ax.legend()
+    ax.set_xlabel("False Positive Rate", horizontalalignment='right', x=1.0)
+    ax.set_ylabel("True Positive Rate", horizontalalignment='right', y=1.0)
+    fig.tight_layout()
+    if doShow: plt.show()
+    plt.savefig("%s/roc_curve.png" % (saveDir))
+    plt.close()
+    return
+
+def getWeightTMVA(df, lumi, fc):
+    return lumi*df["newWeight"]*fc
+
+
+def plotFuncTMVA(sig, bkg, lumi, name, bins, scale=True):
+    global doShow
+    global saveDir
+    fig, ax = plt.subplots()
+    bkgHist = ax.hist(x=bkg[name], bins=bins, weights=bkg["finalWeight"],label="Background", histtype="step", linewidth=1.5)
+    if scale:
+        sigMax = np.max(np.histogram(sig[name], bins=bins, weights=sig["finalWeight"])[0])
+        
+        scaleFac = findScale(sigMax, max(bkgHist[0]))
+        sigHist = ax.hist(x=sig[name], bins=bins, weights=sig["finalWeight"]*scaleFac, label="Signal x {}".format(scaleFac), histtype="step",linewidth=1.5)
+    else:
+        sigHist = ax.hist(x=sig[name], bins=bins, weights=sig["finalWeight"], label="Signal", histtype="step",linewidth=1.5)
+    ax.legend()
+    ax.set_xlabel(name)
+    ax.set_ylabel("Events/bin")
+    ax.set_title("Lumi = {} ifb".format(lumi/1000))
+    fig.tight_layout()
+    if doShow: plt.show()
+    plt.savefig("%s/%s.png" % (saveDir, name))
+    plt.close()

@@ -41,6 +41,7 @@ class upGet:
         sumAll = 0
         sumPass = 0
         self.newWeight = list()
+        self.genWeight = list()
         for name in innames:
             sumAll += sum(infile[name]["sumweights"].values)
 
@@ -52,9 +53,9 @@ class upGet:
                 self.valid.append(dir["testTree;%i"%i])
                 i += 1
                 sumPass += np.sum(self.valid[-1]["weight"].array())
-                scale = xsec/sum(dir["sumweights"].values)*np.sum(dir["sumweights"].values)/sumAll
+                scale = xsec/sumAll
                 self.newWeight.append(self.valid[-1]["weight"].array()*scale)
-                
+                self.genWeight.append([1 if i>0 else -1 for i in self.valid[-1]["weight"].array()])
         self.branches = self.valid[0].keys()
         self.sumweight = MyTH1(0, 2, [0, sumAll, sumPass, 0])
         
@@ -65,6 +66,7 @@ class upGet:
             
             branchDict = {b:tree[b].array() for b in self.branches}
             branchDict["newWeight"] = self.newWeight[i]
+            branchDict["genWeight"] = self.genWeight[i]
             try:
                 inTree[self.outname].extend(branchDict)
             except:
@@ -87,6 +89,7 @@ for name in allNames:
 branches = allTrees[0].branches
 branchDict = {i:"float32" for i in branches}
 branchDict["newWeight"] = "float32"
+branchDict["genWeight"] = "float32"
 
 
 with uproot.recreate("inputTrees.root") as f:
@@ -98,6 +101,7 @@ with uproot.recreate("inputTrees.root") as f:
         for i in bad:
             bDict = {b:tree.valid[i][b].array() for b in branches}
             bDict["newWeight"] = tree.newWeight[i]
+            bDict["genWeight"] = tree.genWeight[i]
             f[tree.outname].extend(bDict)
         
         
