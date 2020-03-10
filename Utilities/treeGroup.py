@@ -20,7 +20,6 @@ class TreeGroup:
                 self.f.append(dataF)
         for dirN in removeList:
             label.remove(dirN)
-        self.xsec = xsec
         self.label = label
         self.testFact = np.ones(len(self.f))
         
@@ -29,7 +28,6 @@ class TreeGroup:
         
     def __add__(self, other):
         self.f.extend(other.f)
-        self.xsec.extend(other.xsec)
         self.label.extend(other.label)
         self.testFact = np.concatenate([self.testFact, other.testFact])
         self.pred.extend(other.pred)
@@ -43,13 +41,12 @@ class TreeGroup:
         return self.f[index]
 
     def makePred(self, func):
-        self.pred = [func.predict(xgb.DMatrix(frame.drop(TreeGroup.exclude, axis=1))) for frame in self.f]
+        self.pred = [func.predict_proba(xgb.DMatrix(frame.drop(TreeGroup.exclude, axis=1))) for frame in self.f]
 
     def makeWgt(self, lumi=140000):
         self.wgt = [mframe["newWeight"].values*mExtraWgt*lumi for mframe, mExtraWgt in zip(self.f, self.testFact)]
         self.madeWeight = True
-        # for name, wgt in zip(self.label, self.wgt):
-        #     print(name, sum(wgt))
+                
 
     def getFrame(self, infile, dirName, signal):
         frame = infile[dirName].pandas.df(TreeGroup.bNames+TreeGroup.exclude[1:])
