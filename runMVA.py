@@ -35,7 +35,6 @@ if not os.path.isdir(outname):
     os.mkdir(outname)
 
 
-
 if args.tmva or args.xgb:
     if args.tmva:
         mvaRunner = TMVAMaker("inputTrees.root", outname)
@@ -47,3 +46,5 @@ if args.tmva or args.xgb:
     mvaRunner.addVariables(usevar, specVar)
     mvaRunner.addCut(cut)
     mvaRunner.addGroup(["tttj", "tttw"], "Signal", True)
+    mvaRunner.addGroup(["4top2016",], "Background")
+    mvaRunner.train()

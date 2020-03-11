@@ -1,4 +1,4 @@
-import pandas, uproot, ROOT
+import pandas, uproot, ROOT, xgboost
 from sklearn.model_selection import train_test_split
 
 class MvaMaker(object):
@@ -11,8 +11,8 @@ class MvaMaker(object):
 class TMVAMaker(MvaMaker):
     def __init__(self, *args):
         super(TMVAMaker, self).__init__(*args)
-        analysistype = 'AnalysisType=Classification'                     
-        # analysistype = 'AnalysisType=MultiClass' #For many backgrounds
+        # analysistype = 'AnalysisType=Classification'                     
+        analysistype = 'AnalysisType=MultiClass' #For many backgrounds
         factoryOptions = [ "!Silent", "Color", "DrawProgressBar", "Transformations=I", analysistype]
         ROOT.TMVA.Tools.Instance()
         self.infile = ROOT.TFile(self.infileName)
@@ -49,14 +49,14 @@ class TMVAMaker(MvaMaker):
                 self.dataset.AddTree(tree, outName, fac/tree.GetEntries(self.cut))
             
     def train(self):
-        self.dataset.PrepareTrainingAndTestTree(rootCut, ":".join(["SplitMode=Random:NormMode=EqualNumEvents",]))
+        self.dataset.PrepareTrainingAndTestTree(self.rootCut, ":".join(["SplitMode=Random:NormMode=EqualNumEvents",]))
         # "CrossEntropy", "GiniIndex", "GiniIndexWithLaplace", "MisClassificationError", "SDivSqrtSPlusB"
         sepType="CrossEntropy"
 
         #methodInput =["!H", "NTrees=500", "nEventsMin=150", "MaxDepth=5", "BoostType=AdaBoost", "AdaBoostBeta=0.5", "SeparationType={}".format(sepType),"nCuts=20","PruneMethod=NoPruning","IgnoreNegWeightsInTraining",]
         methodInput = ["!H","!V","NTrees=500","MaxDepth=8","BoostType=Grad","Shrinkage=0.01","UseBaggedBoost","BaggedSampleFraction=0.50","SeparationType=SDivSqrtSPlusB","nCuts=50","Pray"]
 
-        method = self.factory.BookMethod(dataset, ROOT.TMVA.Types.kBDT, "BDT", ":".join(methodInput))
+        method = self.factory.BookMethod(self.dataset, ROOT.TMVA.Types.kBDT, "BDT", ":".join(methodInput))
         self.factory.TrainAllMethods() 
         self.factory.TestAllMethods() 
         self.factory.EvaluateAllMethods() 
@@ -76,10 +76,8 @@ class XGBoostMaker(MvaMaker):
     def addVariables(self, trainVars, specVars):
         self.trainVars = trainVars
         self.specVars = specVars
-        self.X_train = pandas.DataFrame(self.trainVars+self.specVars+["isSignal"])
-        self.X_test = pandas.DataFrame(self.trainVars+self.specVars+["isSignal"])
-        self.y_train = pandas.DataFrame(self.trainVars+self.specVars+["isSignal"])
-        self.y_test = pandas.DataFrame(self.trainVars+self.specVars+["isSignal"])
+        self.trainSet = pandas.DataFrame(columns=self.trainVars+self.specVars+["isSignal"])
+        self.testSet = pandas.DataFrame(columns=self.trainVars+self.specVars)
         
     def addCut(self, cut):
         self.cut = cut.split("&&")
@@ -91,11 +89,11 @@ class XGBoostMaker(MvaMaker):
             if isSignal:    df["isSignal"] = 1
             else:           df["isSignal"] = 0
 
-            X_train, X_test, y_train, y_test= train_test_split(df[self.trainVars], df["isSignal"], test_size=self.splitRatio, random_state=12345)
-            self.X_train = pandas.concat([X_train, self.X_train], sort=True)
-            self.X_test = pandas.concat([X_test, self.X_test], sort=True)
-            self.y_train = pandas.concat([y_train, self.y_train], sort=True)
-            self.y_test = pandas.concat([y_test, self.y_test], sort=True)
+            train, test = train_test_split(df, test_size=self.splitRatio, random_state=12345)
+            print("Add Tree {} of type {} with {} event".format(name, outName, len(train)))
+            self.trainSet = pandas.concat([train.reset_index(drop=True), self.trainSet], sort=True)
+            self.testSet = pandas.concat([test.reset_index(drop=True), self.testSet], sort=True)
+            
 
     def cutFrame(self, frame):
         for cut in self.cut:
@@ -111,12 +109,10 @@ class XGBoostMaker(MvaMaker):
         return frame
         
     def train(self):
-        X_train = pandas.concat(split_train,ignore_index=True).drop(TreeGroup.exclude, axis=1)
-        y_train = pandas.concat(split_train, ignore_index=True)["isSignal"]
-
-        
+        X_train = self.trainSet.drop(self.specVars+["isSignal"], axis=1)
+        y_train = self.trainSet["isSignal"]
         # XGBoost training
-        dtrain = xgb.DMatrix(X_train, label=y_train, weight=w_train)
+        dtrain = xgboost.DMatrix(X_train, y_train)
 
         evallist  = [(dtrain,'train')]
         num_round=200
@@ -129,9 +125,9 @@ class XGBoostMaker(MvaMaker):
         param['eval_metric'] = "auc"
         param['subsample'] = 0.9
         param['colsample_bytree'] = 0.5
-        fitModel = xgb.train(param.items(), dtrain, num_round, evallist,early_stopping_rounds=100, verbose_eval=100 )
+        fitModel = xgboost.train(param.items(), dtrain, num_round, evallist,early_stopping_rounds=100, verbose_eval=100 )
 
-        fitModel.save_model("{}/model.bin".format(args.infile))
+        fitModel.save_model("{}/model.bin".format(self.outname))
 
 
 
