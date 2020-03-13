@@ -1,11 +1,10 @@
-import pandas, uproot, ROOT, xgboost
+import pandas, uproot, ROOT, xgboost, numpy
 from sklearn.model_selection import train_test_split
 
 class MvaMaker(object):
     def __init__(self, infileName, outname):
         self.outname = outname
         self.infileName = infileName
-        
         
 
 class TMVAMaker(MvaMaker):
@@ -30,7 +29,9 @@ class TMVAMaker(MvaMaker):
         self.cut = cut
         self.rootCut = ROOT.TCut(cut)
         
-    def addGroup(self, inNames, outName, isSignal=False):
+    def addGroup(self, inNames, outName):
+        isSignal = True if outName=="Signal" else False
+
         sumW = dict()
         for name in inNames:
             tree = self.infile.Get(name)
@@ -61,8 +62,6 @@ class TMVAMaker(MvaMaker):
         self.factory.TestAllMethods() 
         self.factory.EvaluateAllMethods() 
 
-
-            
 class XGBoostMaker(MvaMaker):
     def __init__(self, *args):
         super(XGBoostMaker, self).__init__(*args)
@@ -71,23 +70,31 @@ class XGBoostMaker(MvaMaker):
         self.y_train = None
         self.y_test = None
         self.splitRatio = 0.5
+        self.groupNames = ["Signal"]
         self.infile = uproot.open(self.infileName)
         
     def addVariables(self, trainVars, specVars):
         self.trainVars = trainVars
         self.specVars = specVars
-        self.trainSet = pandas.DataFrame(columns=self.trainVars+self.specVars+["isSignal"])
-        self.testSet = pandas.DataFrame(columns=self.trainVars+self.specVars)
+        self.allVars = ["classID"] + self.trainVars + self.specVars
+        self.trainSet = pandas.DataFrame(columns=self.allVars)
+        self.testSet = pandas.DataFrame(columns=self.allVars[1:])
         
     def addCut(self, cut):
         self.cut = cut.split("&&")
 
-    def addGroup(self, inNames, outName, isSignal=False):
+    def addGroup(self, inNames, outName):
+        isSignal = True if outName=="Signal" else False
+        if not isSignal:
+           self.groupNames.append(outName) 
+
         for name in inNames:
-            df = self.infile[name].pandas.df(self.trainVars+self.specVars)
+            df = self.infile[name].pandas.df(self.allVars[1:])
             df = self.cutFrame(df)
-            if isSignal:    df["isSignal"] = 1
-            else:           df["isSignal"] = 0
+            if isSignal:
+                df["classID"] = 0
+            else:
+                df["classID"] = len(self.groupNames)-1
 
             train, test = train_test_split(df, test_size=self.splitRatio, random_state=12345)
             print("Add Tree {} of type {} with {} event".format(name, outName, len(train)))
@@ -109,27 +116,42 @@ class XGBoostMaker(MvaMaker):
         return frame
         
     def train(self):
-        X_train = self.trainSet.drop(self.specVars+["isSignal"], axis=1)
-        y_train = self.trainSet["isSignal"]
+        X_train = self.trainSet.drop(self.specVars+["classID"], axis=1)
+        y_train = self.trainSet["classID"]
+        X_test = self.testSet.drop(self.specVars+["classID"], axis=1)
+        y_test = self.testSet["classID"]
         # XGBoost training
         dtrain = xgboost.DMatrix(X_train, y_train)
 
         evallist  = [(dtrain,'train')]
-        num_round=200
         param = {}
-        param['objective'] = 'binary:logistic'
+        param['objective'] = 'multi:softprob'
         param['eta'] = 0.09
         param['max_depth'] = 5
         param['silent'] = 1
         param['nthread'] = 2
-        param['eval_metric'] = "auc"
+        param['eval_metric'] = "mlogloss"
         param['subsample'] = 0.9
         param['colsample_bytree'] = 0.5
-        fitModel = xgboost.train(param.items(), dtrain, num_round, evallist,early_stopping_rounds=100, verbose_eval=100 )
+        param['num_class'] = len(numpy.unique(y_train))
+        param['n_jobs'] = 3
+        fitModel = xgboost.XGBClassifier(**param)
+        
+        fitModel.fit(X_train, y_train, eval_set=[(X_train, y_train), (X_test, y_test)], early_stopping_rounds=100)
 
+        with uproot.recreate("{}/BDT.root".format(self.outname)) as outfile:
+            self.writeOut(outfile, "TestTree", self.testSet, fitModel.predict_proba(X_test).T)
+            self.writeOut(outfile, "TrainTree", self.trainSet, fitModel.predict_proba(X_train).T)
+        valid_result = fitModel.evals_result()
+        best_n_trees = fitModel.best_ntree_limit
+                        
         fitModel.save_model("{}/model.bin".format(self.outname))
 
+    def writeOut(self, outfile, treeName, workSet, prediction):
+        outDict = {name: workSet[name] for name in self.allVars}
+        for i, name in enumerate(self.groupNames):
+            outDict[name] = prediction[i]
 
-
-
+        outfile[treeName] = uproot.newtree({name:"float32" for name in self.allVars+self.groupNames})    
+        outfile[treeName].extend(outDict)
 

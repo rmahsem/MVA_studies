@@ -8,7 +8,7 @@ import uproot
 saveDir = "."
 doShow = False
 
-def makeROC(roc_in, name):
+def makeROCXGB(roc_in, name):
     global saveDir
     pred_all,truth_all,wgt_all = list(), list(), list()
     for item in roc_in:
@@ -30,6 +30,28 @@ def makeROC(roc_in, name):
     plt.clf()
     plt.cla()
 
+def makeROC(pred_truth, wgt=[], name=""):
+    global doshow
+    global saveDir
+    if name: name = "_{}".format(name)
+    pred = pred_truth[0]
+    truth = pred_truth[1]
+        
+    fpr, tpr,_ = roc_curve(truth, pred)#, sample_weight=wgt)
+    auc = roc_auc_score(truth, pred)#, sample_weight=wgt)
+
+    fig, ax = plt.subplots()
+    ax.plot(fpr,tpr, label="AUC = {:.3f}".format(auc))
+    ax.plot(np.linspace(0,1,5), np.linspace(0,1,5), linestyle=':')
+    ax.legend()
+    ax.set_xlabel("False Positive Rate", horizontalalignment='right', x=1.0)
+    ax.set_ylabel("True Positive Rate", horizontalalignment='right', y=1.0)
+    fig.tight_layout()
+    if doShow: plt.show()
+    plt.savefig("{}/roc_curve{}.png".format(saveDir, name))
+    plt.close()
+
+    
 def approxLikelihood(sig_hist, bkgd_hist):
     term1 = 0
     term2 = 0
@@ -129,7 +151,7 @@ def getWeightTMVA(df, lumi, fc):
     return lumi*df["newWeight"]*fc
 
 
-def plotFuncTMVA(sig, bkg, lumi, name, bins, scale=True):
+def plotFunc(sig, bkg, lumi, name, bins, scale=True):
     global doShow
     global saveDir
     fig, ax = plt.subplots()

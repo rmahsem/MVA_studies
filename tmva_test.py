@@ -150,7 +150,7 @@ s = np.histogram(signal_df["BDT"], bins=sbBins, weights=signal_df["finalWeight"]
 
 helper.StoB(s,b, sbBins, outname, noSB=False)
 print( "Signal to Bkg: {}".format(helper.approxLikelihood(s, b)))
-helper.plotFuncTMVA(signal_df, background_df, lumi, "BDT", np.linspace(-1,1.,51))
+helper.plotFunc(signal_df, background_df, lumi, "BDT", np.linspace(-1,1.,51))
 # plotFuncTMVA(signal_df, background_df, lumi, "NlooseBJets", np.linspace(0, 15, 15))
 # plotFuncTMVA(signal_df, background_df, lumi, "NtightBJets", np.linspace(0, 10, 10))
 # plotFuncTMVA(signal_df, background_df, lumi, "NJets", np.linspace(0, 20, 20))
