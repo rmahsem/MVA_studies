@@ -14,11 +14,8 @@ from Utilities.MVAPlotter import MVAPlotter
 #More info at: https://root.cern.ch/download/doc/tmva/TMVAUsersGuide.pdf
 
 parser = argparse.ArgumentParser(description='Run TMVA over 4top')
-parser.add_argument('type', type=str, help='Run TMVA along with make plots')
 parser.add_argument('-o', '--out', required=True, type=str, help='output directory name')
-parser.add_argument('-t', '--train', action="store_true", help="Run the training")
-
-parser.add_argument('--useNeg', action="store_true", help='Use Negative event weights in training')
+parser.add_argument('-t', '--train', type=str, default="", help="Run the training")
 parser.add_argument('--show', action="store_true", help='Set if one wants to see plots when they are made (default is to run in batch mode)')
 parser.add_argument('-l', '--lumi', type=float, default=140., help='Luminosity to use for graphs given in ifb: default 140')
 
@@ -32,23 +29,27 @@ helper.saveDir = outname
 helper.doShow = args.show
 lumi=args.lumi*1000
 cut = 'HT>150&&DilepCharge>0&&MET>25'
-bins = np.linspace(0,1,)
-
 
 if not os.path.isdir(outname):
     os.mkdir(outname)
 
+##################
+# Set background #
+##################
 
 groups = np.array([["Signal", ["tttj", "tttw"]],
-             ["FourTop", ["4top2016",]], 
-             ["Background", ["ttw", "ttz", "tth2nonbb", "ttwh", "ttzz", "ttzh", "tthh", "ttww", "ttwz", "www", "wwz", "wzz", "zzz", "zz4l_powheg", "wz3lnu_mg5amcnlo", "ww_doubleScatter", "wpwpjj_ewk", "ttg_dilep", "wwg", "wzg", "ttg_lepfromTbar", "ttg_lepfromT", "ggh2zz", "wg", "tzq", "st_twll", "DYm50"]],
+                   ["FourTop", ["4top2016",]], 
+                   ["Background", ["ttw", "ttz", "tth2nonbb", "ttwh", "ttzz", "ttzh", "tthh", "ttww", "ttwz", "www", "wwz", "wzz", "zzz", "zz4l_powheg", "wz3lnu_mg5amcnlo", "ww_doubleScatter", "wpwpjj_ewk", "ttg_dilep", "wwg", "wzg", "ttg_lepfromTbar", "ttg_lepfromT", "ggh2zz", "wg", "tzq", "st_twll", "DYm50"]],
 ])
     
+############
+# training #
+############
 
 if args.train:
-    if args.type == "tmva":
+    if args.train == "tmva":
         mvaRunner = TMVAMaker("inputTrees.root", outname)
-    elif args.type == "xgb":
+    elif args.train == "xgb":
         mvaRunner = XGBoostMaker("inputTrees.root", outname)
     else:
         raise Exception("Not implimented for mva type ({})".format(mvaType))
@@ -60,14 +61,16 @@ if args.train:
         mvaRunner.addGroup(samples, groupName)
     mvaRunner.train()
 
+
+###############
+# Make Plots  #
+###############
 output = MVAPlotter(outname, groups.T[0], lumi)
 
 helper.makeROC(output.setupROC("Signal", ["FourTop"]), name="SignalvsFourTop")
 helper.makeROC(output.setupROC("Signal", ["FourTop", "Background"]), name="SignalvsAll")
 helper.makeROC(output.setupROC("FourTop", ["Signal"]), name="FourTopvsSingal")
 helper.makeROC(output.setupROC("FourTop", ["Signal", "Background"]), name="FourTopvsAll")
-
-
 
 helper.plotFunc(output.getSample(["Signal"]), output.getSample(["FourTop", "Background"]),
                 lumi, "BDT.Signal", np.linspace(0,1,40))
