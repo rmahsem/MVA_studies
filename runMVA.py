@@ -7,7 +7,6 @@ import copy
 import numpy as np
 ROOT.gROOT.SetBatch(True)
 import argparse
-import Utilities.helper as helper
 from Utilities.MvaMaker import TMVAMaker, XGBoostMaker
 from Utilities.MVAPlotter import MVAPlotter
 
@@ -25,8 +24,6 @@ usevar = ["NJets", "NBJets", "HT", "MET", "l1Pt", "l2Pt", "lepMass", "centrality
 specVar= ["newWeight", "DilepCharge"]
 
 outname = args.out
-helper.saveDir = outname
-helper.doShow = args.show
 lumi=args.lumi*1000
 cut = 'HT>150&&DilepCharge>0&&MET>25'
 
@@ -66,26 +63,25 @@ if args.train:
 # Make Plots  #
 ###############
 output = MVAPlotter(outname, groups.T[0], lumi)
+output.setDoShow(args.show)
 
-helper.makeROC(output.setupROC("Signal", ["FourTop"]), name="SignalvsFourTop")
-helper.makeROC(output.setupROC("Signal", ["FourTop", "Background"]), name="SignalvsAll")
-helper.makeROC(output.setupROC("FourTop", ["Signal"]), name="FourTopvsSingal")
-helper.makeROC(output.setupROC("FourTop", ["Signal", "Background"]), name="FourTopvsAll")
+output.makeROC("Signal", ["FourTop"], "SignalvsFourTop")
+output.makeROC("Signal", ["FourTop", "Background"], "SignalvsAll")
+output.makeROC("FourTop", ["Signal"], "FourTopvsSingal")
+output.makeROC("FourTop", ["Signal", "Background"], "FourTopvsAll")
 
-helper.plotFunc(output.getSample(["Signal"]), output.getSample(["FourTop", "Background"]),
-                lumi, "BDT.Signal", np.linspace(0,1,40))
-helper.plotFunc(output.getSample(["Signal"]), output.getSample(["FourTop", "Background"]),
-                lumi, "BDT.FourTop", np.linspace(0,1,40))
-helper.plotFunc(output.getSample(["Signal"]), output.getSample(["FourTop", "Background"]),
-                lumi, "BDT.Background", np.linspace(0,1,40))
+output.plotFunc("Signal", ["FourTop", "Background"], "BDT.Signal", np.linspace(0,1,40), "_SigVsAll")
+output.plotFunc("Signal", ["FourTop"], "BDT.Signal", np.linspace(0,1,40), "_SigVsFourTop")
+output.plotFunc("Signal", ["Background"], "BDT.Signal", np.linspace(0,1,40), "_SigVsBackground")
+output.plotFunc("Signal", ["FourTop", "Background"], "BDT.FourTop", np.linspace(0,1,40), "_SigVsAll")
+output.plotFunc("Signal", ["FourTop", "Background"], "BDT.Background", np.linspace(0,1,40), "_SigVsAll")
+
 
 stobBins = np.linspace(0, 1, 50)
-helper.StoB(output.getHist(["Signal"], "BDT.Signal", stobBins),
-            output.getHist(["FourTop", "Background"], "BDT.Signal", stobBins), 
-            stobBins, "SignalvsAll")
-print helper.approxLikelihood(output.getHist(["Signal"], "BDT.Signal", stobBins),
-                              output.getHist(["FourTop", "Background"], "BDT.Signal", stobBins), )
+output.plotStoB("Signal", ["FourTop", "Background"], "BDT.Signal", stobBins, "SignalVsAll")
 
-#helper.makeROC()
+print "Signal: ", output.approxLikelihood("Signal", ["FourTop", "Background"], "BDT.Signal", stobBins)
+print "FourTop: ", output.approxLikelihood("Signal", ["FourTop", "Background"], "BDT.FourTop", stobBins)
+print "Background: ", output.approxLikelihood("Signal", ["FourTop", "Background"], "BDT.Background", stobBins)
 
     

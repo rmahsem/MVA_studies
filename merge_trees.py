@@ -24,9 +24,9 @@ class MyTH1(uproot_methods.classes.TH1.Methods, list):
         self._classname = "TH1F"
 
 
-infile3top = uproot.open("ttt_multiYear_1126.root")
-infileAll = uproot.open("all_met25_mvaTest_1213.root")
-infileAll2 = uproot.open("full_MC_tree_only2lep_1126.root")
+infile3top = uproot.open("mvaThreeTop_2020.03.16.root")
+infileAll2 = uproot.open("mvaFourTop_2020.03.16.root")
+infileAll = uproot.open("mvaBackground_2020.03.16.root")
 
 class upGet:
     def __init__(self, infile, innames, outname=None, xsec=1):
@@ -44,14 +44,10 @@ class upGet:
         self.genWeight = list()
         for name in innames:
             sumAll += sum(infile[name]["sumweights"].values)
-
-        
+            
         for name in innames:
-            dir = infile[name]
-            i=1
-            while("testTree;%i" %i in dir):
-                self.valid.append(dir["testTree;%i"%i])
-                i += 1
+            for treeName in [i.decode("utf-8") for i in infile[name].keys() if str(i).find("testTree") != -1]:
+                self.valid.append(infile[name][treeName])
                 sumPass += np.sum(self.valid[-1]["weight"].array())
                 scale = xsec/sumAll
                 self.newWeight.append(self.valid[-1]["weight"].array()*scale)

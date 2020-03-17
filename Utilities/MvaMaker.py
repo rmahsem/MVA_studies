@@ -1,5 +1,7 @@
-import pandas, uproot, ROOT, xgboost, numpy
-from sklearn.model_selection import train_test_split
+import pandas, uproot, ROOT
+import xgboost as xgb
+import numpy as np
+from sklearn.model_selection import train_test_split, KFold, GridSearchCV, cross_validate
 
 class MvaMaker(object):
     def __init__(self, infileName, outname):
@@ -88,6 +90,12 @@ class XGBoostMaker(MvaMaker):
         if not isSignal:
            self.groupNames.append(outName) 
 
+        totalSW = 0
+        for name in inNames:
+            df = self.infile[name].pandas.df(self.allVars[1:])
+            df = self.cutFrame(df)
+            totalSW += np.sum(df["newWeight"])
+        
         for name in inNames:
             df = self.infile[name].pandas.df(self.allVars[1:])
             df = self.cutFrame(df)
@@ -95,7 +103,8 @@ class XGBoostMaker(MvaMaker):
                 df["classID"] = 0
             else:
                 df["classID"] = len(self.groupNames)-1
-
+            df.insert(0, "finalWeight", np.abs(df["newWeight"])*len(df)/totalSW)
+            
             train, test = train_test_split(df, test_size=self.splitRatio, random_state=12345)
             print("Add Tree {} of type {} with {} event".format(name, outName, len(train)))
             self.trainSet = pandas.concat([train.reset_index(drop=True), self.trainSet], sort=True)
@@ -116,28 +125,29 @@ class XGBoostMaker(MvaMaker):
         return frame
         
     def train(self):
-        X_train = self.trainSet.drop(self.specVars+["classID"], axis=1)
+        X_train = self.trainSet.drop(self.specVars+["classID", "finalWeight"], axis=1)
         y_train = self.trainSet["classID"]
-        X_test = self.testSet.drop(self.specVars+["classID"], axis=1)
+        X_test = self.testSet.drop(self.specVars+["classID", "finalWeight"], axis=1)
         y_test = self.testSet["classID"]
         # XGBoost training
-        dtrain = xgboost.DMatrix(X_train, y_train)
-
-        evallist  = [(dtrain,'train')]
         param = {}
         param['objective'] = 'multi:softprob'
         param['eta'] = 0.09
         param['max_depth'] = 5
         param['silent'] = 1
-        param['nthread'] = 2
+        param['nthread'] = 3
         param['eval_metric'] = "mlogloss"
         param['subsample'] = 0.9
         param['colsample_bytree'] = 0.5
-        param['num_class'] = len(numpy.unique(y_train))
-        param['n_jobs'] = 3
-        fitModel = xgboost.XGBClassifier(**param)
+        param['num_class'] = len(np.unique(y_train))
+        num_rounds = 150
         
-        fitModel.fit(X_train, y_train, eval_set=[(X_train, y_train), (X_test, y_test)], early_stopping_rounds=100)
+        # dtrain = xgboost.DMatrix(X_train, y_train)
+        # dtest = xgboost.DMatrix(X_test, y_test)
+        # fitModel =  xgboost.train(param, dtrain, num_rounds, [(dtrain, "train"), (dtest, "test")])
+        fitModel = xgb.XGBClassifier(**param)
+        fitModel.fit(X_train, y_train, self.trainSet["finalWeight"], eval_set=[(X_train, y_train), (X_test, y_test)], early_stopping_rounds=100)
+        
 
         with uproot.recreate("{}/BDT.root".format(self.outname)) as outfile:
             self.writeOut(outfile, "TestTree", self.testSet, fitModel.predict_proba(X_test).T)
@@ -147,6 +157,8 @@ class XGBoostMaker(MvaMaker):
                         
         fitModel.save_model("{}/model.bin".format(self.outname))
 
+    
+        
     def writeOut(self, outfile, treeName, workSet, prediction):
         outDict = {name: workSet[name] for name in self.allVars}
         for i, name in enumerate(self.groupNames):
@@ -155,3 +167,28 @@ class XGBoostMaker(MvaMaker):
         outfile[treeName] = uproot.newtree({name:"float32" for name in self.allVars+self.groupNames})    
         outfile[treeName].extend(outDict)
 
+        
+def modelfit(alg, dtrain, predictors,useTrainCV=True, cv_folds=5, early_stopping_rounds=50):
+    
+    if useTrainCV:
+        xgb_param = alg.get_xgb_params()
+        xgtrain = xgb.DMatrix(dtrain[predictors].values, label=dtrain[target].values)
+        cvresult = xgb.cv(xgb_param, xgtrain, num_boost_round=alg.get_params()['n_estimators'], nfold=cv_folds,
+            metrics='auc', early_stopping_rounds=early_stopping_rounds, show_progress=False)
+        alg.set_params(n_estimators=cvresult.shape[0])
+    
+    #Fit the algorithm on the data
+    alg.fit(dtrain[predictors], dtrain['Disbursed'],eval_metric='auc')
+        
+    #Predict training set:
+    dtrain_predictions = alg.predict(dtrain[predictors])
+    dtrain_predprob = alg.predict_proba(dtrain[predictors])[:,1]
+        
+    #Print model report:
+    print "\nModel Report"
+    print "Accuracy : %.4g" % metrics.accuracy_score(dtrain['Disbursed'].values, dtrain_predictions)
+    print "AUC Score (Train): %f" % metrics.roc_auc_score(dtrain['Disbursed'], dtrain_predprob)
+                    
+    feat_imp = pd.Series(alg.booster().get_fscore()).sort_values(ascending=False)
+    feat_imp.plot(kind='bar', title='Feature Importances')
+    plt.ylabel('Feature Importance Score')
