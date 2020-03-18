@@ -24,9 +24,9 @@ class MyTH1(uproot_methods.classes.TH1.Methods, list):
         self._classname = "TH1F"
 
 
-infile3top = uproot.open("mvaThreeTop_2020.03.16.root")
-infileAll2 = uproot.open("mvaFourTop_2020.03.16.root")
-infileAll = uproot.open("mvaBackground_2020.03.16.root")
+infile3top = uproot.open("inputTrees/mvaThreeTop_2020.03.16.root")
+infileAll2 = uproot.open("inputTrees/mvaFourTop_2020.03.16.root")
+infileAll = uproot.open("inputTrees/mvaBackground_2020.03.16.root")
 
 class upGet:
     def __init__(self, infile, innames, outname=None, xsec=1):
@@ -42,14 +42,13 @@ class upGet:
         sumPass = 0
         self.newWeight = list()
         self.genWeight = list()
+        
         for name in innames:
             sumAll += sum(infile[name]["sumweights"].values)
-            
-        for name in innames:
             for treeName in [i.decode("utf-8") for i in infile[name].keys() if str(i).find("testTree") != -1]:
                 self.valid.append(infile[name][treeName])
                 sumPass += np.sum(self.valid[-1]["weight"].array())
-                scale = xsec/sumAll
+                scale = xsec/infile[name]["sumweights"].values[int(treeName[8:-2])+1]
                 self.newWeight.append(self.valid[-1]["weight"].array()*scale)
                 self.genWeight.append([1 if i>0 else -1 for i in self.valid[-1]["weight"].array()])
         self.branches = self.valid[0].keys()
@@ -81,7 +80,6 @@ allNames = [["ttw", 0.2043], ["ttz", 0.2529], ["tth2nonbb", 0.2151] , ["ttwh", 0
 for name in allNames:
     allTrees.append(upGet(infileAll, name[0], xsec=name[1]))
 
-# exit()
 branches = allTrees[0].branches
 branchDict = {i:"float32" for i in branches}
 branchDict["newWeight"] = "float32"
