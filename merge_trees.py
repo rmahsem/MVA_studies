@@ -1,6 +1,8 @@
 import uproot
 import numpy as np
 import uproot_methods.classes.TH1
+import matplotlib.pyplot as plt
+
 
 class SimpleNamespace (object):
     def __init__ (self, **kwargs):
@@ -42,13 +44,15 @@ class upGet:
         sumPass = 0
         self.newWeight = list()
         self.genWeight = list()
-        
+
         for name in innames:
             sumAll += sum(infile[name]["sumweights"].values)
+        
+        for name in innames:
             for treeName in [i.decode("utf-8") for i in infile[name].keys() if str(i).find("testTree") != -1]:
                 self.valid.append(infile[name][treeName])
                 sumPass += np.sum(self.valid[-1]["weight"].array())
-                scale = xsec/infile[name]["sumweights"].values[int(treeName[8:-2])+1]
+                scale = xsec/sumAll#infile[name]["sumweights"].values[int(treeName[8:-2])+1]
                 self.newWeight.append(self.valid[-1]["weight"].array()*scale)
                 self.genWeight.append([1 if i>0 else -1 for i in self.valid[-1]["weight"].array()])
         self.branches = self.valid[0].keys()

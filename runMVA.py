@@ -74,7 +74,9 @@ output.plotFunc("Signal", ["FourTop", "Background"], "BDT.Signal", np.linspace(0
 output.plotFunc("Signal", ["FourTop"], "BDT.Signal", np.linspace(0,1,40), "_SigVsFourTop")
 output.plotFunc("Signal", ["Background"], "BDT.Signal", np.linspace(0,1,40), "_SigVsBackground")
 output.plotFunc("Signal", ["FourTop", "Background"], "BDT.FourTop", np.linspace(0,1,40), "_SigVsAll")
+output.plotFunc("Signal", ["FourTop"], "BDT.FourTop", np.linspace(0,1,40), "_SigVsFourTop")
 output.plotFunc("Signal", ["FourTop", "Background"], "BDT.Background", np.linspace(0,1,40), "_SigVsAll")
+output.plotFunc("Signal", ["FourTop"], "BDT.Background", np.linspace(0,1,40), "_SigVsFourTop")
 
 
 stobBins = np.linspace(0, 1, 50)

@@ -76,12 +76,12 @@ class MVAPlotter(object):
         ax.hist(x=bins[:-1], weights=sigHist*scaleFac, bins=bins, label=sigName, histtype="step", linewidth=1.5)
         ax.hist(x=bins[:-1], weights=bkgHist, bins=bins, label=bkgName, histtype="step", linewidth=1.5)
         ax.legend()
-        ax.set_xlabel(name)
+        ax.set_xlabel(var)
         ax.set_ylabel("Events/bin")
         ax.set_title("Lumi = {} ifb".format(self.lumi/1000.))
         fig.tight_layout()
-        if self.doShow: plt.show()
         plt.savefig("%s/%s%s.png" % (self.saveDir, var, name))
+        if self.doShow: plt.show()
         plt.close()
 
     def plotStoB(self, sig, bkg, var, bins, name, noSB=False):
@@ -104,8 +104,8 @@ class MVAPlotter(object):
         ax.set_xlabel("BDT value", horizontalalignment='right', x=1.0)
         ax.set_ylabel("A.U.", horizontalalignment='right', y=1.0)
         fig.tight_layout()
-        if self.doShow: plt.show()
         plt.savefig("%s/StoB_%s.png" % (self.saveDir, name))
+        if self.doShow: plt.show()
         plt.close()
 
     def approxLikelihood(self, sig, bkg, var, bins):
@@ -137,8 +137,8 @@ class MVAPlotter(object):
         ax.set_xlabel("False Positive Rate", horizontalalignment='right', x=1.0)
         ax.set_ylabel("True Positive Rate", horizontalalignment='right', y=1.0)
         fig.tight_layout()
-        if self.doShow: plt.show()
         plt.savefig("{}/roc_curve{}.png".format(self.saveDir, name))
+        if self.doShow: plt.show()
         plt.close()
 
         

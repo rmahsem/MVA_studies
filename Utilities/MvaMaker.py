@@ -92,11 +92,13 @@ class XGBoostMaker(MvaMaker):
            self.groupNames.append(outName) 
 
         totalSW = 0
+        totalEv = 0
         for name in inNames:
             df = self.infile[name].pandas.df(self.allVars[1:])
             df = self.cutFrame(df)
             totalSW += np.sum(np.abs(df["newWeight"]))
-        
+            totalEv += len(df)
+        scale = 1.*totalEv/totalSW
         for name in inNames:
             df = self.infile[name].pandas.df(self.allVars[1:])
             df = self.cutFrame(df)
@@ -104,15 +106,13 @@ class XGBoostMaker(MvaMaker):
                 df["classID"] = 0
             else:
                 df["classID"] = len(self.groupNames)-1
-            df.insert(0, "finalWeight", np.abs(df["newWeight"])*len(df)/totalSW)
-            print np.mean(np.abs(df["newWeight"]))/totalSW*len(df)
+            df.insert(0, "finalWeight", np.abs(df["newWeight"])*scale)
+            
             train, test = train_test_split(df, test_size=self.splitRatio, random_state=12345)
             print("Add Tree {} of type {} with {} event".format(name, outName, len(train)))
             self.trainSet = pandas.concat([train.reset_index(drop=True), self.trainSet], sort=True)
             self.testSet = pandas.concat([test.reset_index(drop=True), self.testSet], sort=True)
         self.groupTotal.append(1.*len(self.trainSet[self.trainSet["classID"] == len(self.groupNames)-1]))
-        print sum(self.trainSet["finalWeight"])
-        print np.unique(self.trainSet["finalWeight"])
         
     def cutFrame(self, frame):
         for cut in self.cut:
@@ -130,27 +130,24 @@ class XGBoostMaker(MvaMaker):
     def train(self):
         X_train = self.trainSet.drop(self.specVars+["classID", "finalWeight"], axis=1)
         y_train = self.trainSet["classID"]
+        w_train = self.trainSet["finalWeight"].copy()
         X_test = self.testSet.drop(self.specVars+["classID", "finalWeight"], axis=1)
         y_test = self.testSet["classID"]
 
+        sigImpFac = 1
+        w_train[self.trainSet["classID"] == 0] *= sigImpFac
         for i, groupTot in enumerate(self.groupTotal):
-            print i, groupTot, sum(self.trainSet["finalWeight"][self.trainSet["classID"] == i])
-        finalWeight = self.trainSet["finalWeight"].copy()
-        for i, groupTot in enumerate(self.groupTotal):
-            print i, groupTot, sum(finalWeight[self.trainSet["classID"] == i])
-            finalWeight[self.trainSet["classID"] == i] *= min(self.groupTotal)/groupTot
+            w_train[self.trainSet["classID"] == i] *= min(self.groupTotal)/groupTot
+            print i, groupTot, sum(w_train[self.trainSet["classID"] == i])
         
-        for i in xrange(len(self.groupNames)):
-            print "{} group: {}".format(i, sum(finalWeight[self.trainSet["classID"] == i]))
-        exit()
         # XGBoost training
         param = {}
-        param['objective'] = 'multi:softprob'
+        param['objective'] = 'multi:softmax'
         param['eta'] = 0.09
         param['max_depth'] = 5
         param['silent'] = 1
         param['nthread'] = 3
-        param['eval_metric'] = "mlogloss"
+        param['eval_metric'] = "merror"
         param['subsample'] = 0.9
         param['colsample_bytree'] = 0.5
         param['num_class'] = len(np.unique(y_train))
@@ -161,7 +158,7 @@ class XGBoostMaker(MvaMaker):
         # dtest = xgboost.DMatrix(X_test, y_test)
         # fitModel =  xgboost.train(param, dtrain, num_rounds, [(dtrain, "train"), (dtest, "test")])
         fitModel = xgb.XGBClassifier(**param)
-        fitModel.fit(X_train, y_train, self.trainSet["finalWeight"], eval_set=[(X_train, y_train), (X_test, y_test)], early_stopping_rounds=100)
+        fitModel.fit(X_train, y_train, w_train, eval_set=[(X_train, y_train), (X_test, y_test)], early_stopping_rounds=100)
         
 
         with uproot.recreate("{}/BDT.root".format(self.outname)) as outfile:
