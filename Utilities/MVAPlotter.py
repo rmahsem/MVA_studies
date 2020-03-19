@@ -12,6 +12,14 @@ class MVAPlotter(object):
         self.doShow = False
         self.saveDir = workDir
         self.lumi=lumi
+        colors = ['#f15854', '#faa43a', '#60bd68', '#5da5da']
+        #['#CC0000', '#99FF00', '#FFCC00', '#3333FF']
+        #['#462066', '#FFB85F', '#FF7A5A', '#00AAA0']
+        
+        self.colorDict = dict()
+        for i, group in enumerate(self.groups):
+            self.colorDict[group] = colors[i]
+        self.colorDict["all"] = colors[len(self.groups)]
         
         prefix=""
         with uproot.open("{}/BDT.root".format(workDir)) as outfile:
@@ -73,8 +81,8 @@ class MVAPlotter(object):
 
         fig, ax = plt.subplots()
 
-        ax.hist(x=bins[:-1], weights=sigHist*scaleFac, bins=bins, label=sigName, histtype="step", linewidth=1.5)
-        ax.hist(x=bins[:-1], weights=bkgHist, bins=bins, label=bkgName, histtype="step", linewidth=1.5)
+        ax.hist(x=bins[:-1], weights=sigHist*scaleFac, bins=bins, label=sigName, histtype="step", linewidth=1.5, color=self.colorDict[sig])
+        ax.hist(x=bins[:-1], weights=bkgHist, bins=bins, label=bkgName, histtype="step", linewidth=1.5, color=self.colorDict[bkgName])
         ax.legend()
         ax.set_xlabel(var)
         ax.set_ylabel("Events/bin")
@@ -84,11 +92,15 @@ class MVAPlotter(object):
         if self.doShow: plt.show()
         plt.close()
 
-    def plotStoB(self, sig, bkg, var, bins, name, noSB=False):
-        nSig = [np.sum(self.getHist([sig], var, bins)[i:]) for i in range(len(bins))]
-        nBack = [np.sum(self.getHist(bkg, var, bins)[i:]) for i in range(len(bins))]
+    def plotStoB(self, sig, bkg, var, bins, name, noSB=False, reverse=False):
+        drt = 1 if not reverse else -1
+        sigHist = self.getHist([sig], var, bins)
+        bkgHist = self.getHist(bkg, var, bins)
+        nSig = [np.sum(sigHist[i::drt]) for i in range(len(bins))]
+        nBack = [np.sum(bkgHist[i::drt]) for i in range(len(bins))]
         StoB  = [s/math.sqrt(b) if b > 0 else 0 for s, b in zip(nSig, nBack)]
         StoSB = [s/math.sqrt(s+b) if b+s > 0 else 0 for s, b in zip(nSig, nBack)]
+        bins = bins[::drt]
         
         StoBmb = bins[StoB.index(max(StoB))]
         StoSBmb = bins[StoSB.index(max(StoSB))]
@@ -103,6 +115,18 @@ class MVAPlotter(object):
         ax.legend()
         ax.set_xlabel("BDT value", horizontalalignment='right', x=1.0)
         ax.set_ylabel("A.U.", horizontalalignment='right', y=1.0)
+
+        ax2 = ax.twinx()
+        sigHist *= 1/np.sum(sigHist)
+        bkgHist *= 1/np.sum(bkgHist)
+        bkgName = "all" if len(bkg) > 1 else bkg[0]
+        bins = bins[::drt]
+        ax2.hist(x=bins[:-1], weights=sigHist, bins=bins, histtype="step", linewidth=1.5, color=self.colorDict[sig])
+        ax2.hist(x=bins[:-1], weights=bkgHist, bins=bins, histtype="step", linewidth=1.5, color=self.colorDict[bkgName])
+
+        ax2.set_ylim(top=1.2*max(max(sigHist), max(bkgHist)))
+        
+        if reverse: ax.set_title("Reversed Cumulative Direction")
         fig.tight_layout()
         plt.savefig("%s/StoB_%s.png" % (self.saveDir, name))
         if self.doShow: plt.show()

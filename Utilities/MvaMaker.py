@@ -143,11 +143,12 @@ class XGBoostMaker(MvaMaker):
         # XGBoost training
         param = {}
         param['objective'] = 'multi:softmax'
+        param['booster'] = 'dart'
         param['eta'] = 0.09
         param['max_depth'] = 5
         param['silent'] = 1
         param['nthread'] = 3
-        param['eval_metric'] = "merror"
+        param['eval_metric'] = "mlogloss"
         param['subsample'] = 0.9
         param['colsample_bytree'] = 0.5
         param['num_class'] = len(np.unique(y_train))

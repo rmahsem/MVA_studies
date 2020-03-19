@@ -80,7 +80,12 @@ output.plotFunc("Signal", ["FourTop"], "BDT.Background", np.linspace(0,1,40), "_
 
 
 stobBins = np.linspace(0, 1, 50)
-output.plotStoB("Signal", ["FourTop", "Background"], "BDT.Signal", stobBins, "SignalVsAll")
+output.plotStoB("Signal", ["FourTop", "Background"], "BDT.Signal", stobBins, "Signal.SignalVsAll")
+output.plotStoB("Signal", ["FourTop"], "BDT.Signal", stobBins, "Signal.SignalVsFourTop")
+output.plotStoB("Signal", ["FourTop", "Background"], "BDT.FourTop", stobBins, "FourTop.SignalVsAll", reverse=True)
+output.plotStoB("Signal", ["FourTop"], "BDT.FourTop", stobBins, "FourTop.SignalVsFourTop", reverse=True)
+output.plotStoB("Signal", ["FourTop", "Background"], "BDT.Background", stobBins, "Background.SignalVsAll", reverse=True)
+output.plotStoB("Signal", ["FourTop"], "BDT.Background", stobBins, "Background.SignalVsFourTop", reverse=True)
 
 print "Signal: ", output.approxLikelihood("Signal", ["FourTop", "Background"], "BDT.Signal", stobBins)
 print "FourTop: ", output.approxLikelihood("Signal", ["FourTop", "Background"], "BDT.FourTop", stobBins)
