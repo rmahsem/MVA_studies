@@ -1,9 +1,9 @@
 # Setup
-I would highly suggest making a virtual environment for this considering the codeis in python 2.7 (only thing that works with ROOT on my machine).
+I would highly suggest making a virtual environment for this considering the code is in python 2.7 (only thing that works with ROOT on my machine).
 ```
 python2.7 -m virtualenv env
 source env/bin/activate
-pip -r requirements
+pip install -r requirements.txt
 ```
 That should install all of the python packages. For the input files, simply grab from my public area and put in the main directory of this repo:
 ```
