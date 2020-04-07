@@ -12,7 +12,7 @@ class MvaMaker(object):
 class TMVAMaker(MvaMaker):
     def __init__(self, *args):
         super(TMVAMaker, self).__init__(*args)
-        # analysistype = 'AnalysisType=Classification'                     
+        analysistype = 'AnalysisType=Classification'                     
         analysistype = 'AnalysisType=MultiClass' #For many backgrounds
         factoryOptions = [ "!Silent", "Color", "DrawProgressBar", "Transformations=I", analysistype]
         ROOT.TMVA.Tools.Instance()
@@ -99,6 +99,7 @@ class XGBoostMaker(MvaMaker):
             totalSW += np.sum(np.abs(df["newWeight"]))
             totalEv += len(df)
         scale = 1.*totalEv/totalSW
+        if isSignal: scale *= 2
         for name in inNames:
             df = self.infile[name].pandas.df(self.allVars[1:])
             df = self.cutFrame(df)
@@ -142,19 +143,31 @@ class XGBoostMaker(MvaMaker):
         
         # XGBoost training
         param = {}
-        param['objective'] = 'multi:softmax'
-        param['booster'] = 'dart'
+        param['objective'] = 'multi:softprob'
         param['eta'] = 0.09
-        param['max_depth'] = 5
         param['silent'] = 1
         param['nthread'] = 3
         param['eval_metric'] = "mlogloss"
-        param['subsample'] = 0.9
-        param['colsample_bytree'] = 0.5
+        #param['subsample'] = 0.9
+        #param['max_depth'] = 5
+        #param['colsample_bytree'] = 0.5
+        param['min_child_weight']=1e-06
+        param['n_estimators']=200
+        param['reg_alpha']=0.0
+        param['reg_lambda']=0.05
+        param['scale_pos_weight']=1
+        param['subsample']=1
+        param['base_score'] = 0.5
+        param['colsample_bylevel'] = 1
+        param['colsample_bytree'] = 1
+        param['gamma'] = 0
+        param['learning_rate'] = 0.1
+        param['max_delta_step'] = 0
+        param['max_depth'] = 5
         param['num_class'] = len(np.unique(y_train))
         num_rounds = 150
 
-        
+        print
         # dtrain = xgboost.DMatrix(X_train, y_train)
         # dtest = xgboost.DMatrix(X_test, y_test)
         # fitModel =  xgboost.train(param, dtrain, num_rounds, [(dtrain, "train"), (dtest, "test")])

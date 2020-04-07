@@ -7,8 +7,6 @@ from sklearn.metrics import roc_curve, roc_auc_score
 class MVAPlotter(object):
     def __init__(self, workDir, groups, lumi=140000):
         self.groups = list(groups)
-        self.testGroup = list()
-        self.trainGroup = list()
         self.doShow = False
         self.saveDir = workDir
         self.lumi=lumi
@@ -38,9 +36,9 @@ class MVAPlotter(object):
         self.trainSet = self.trainSet.rename(columns=renameDict)
         self.testSet = self.testSet.rename(columns=renameDict)
                 
-        for idx, group in enumerate(self.groups):
-            self.testGroup.append(self.testSet[self.testSet["classID"] == idx])
-            self.trainGroup.append(self.trainSet[self.trainSet["classID"] == idx])
+        # for idx, group in enumerate(self.groups):
+        #     self.testGroup.append(self.testSet[self.testSet["classID"] == idx])
+        #     self.trainGroup.append(self.trainSet[self.trainSet["classID"] == idx])
 
             
     def setupROC(self, mainGroup, otherGroups, isTrain=False):
@@ -53,15 +51,42 @@ class MVAPlotter(object):
     def setDoShow(self, doShow):
         self.doShow = doShow
 
-    
-    def getSample(self, groups, isTrain=False):
-        workSet = self.testGroup if not isTrain else self.trainGroup
+    def addVariable(self, name, arr, isTrain=False):
+        workSet = self.getSample(isTrain=isTrain)
+        if len(arr) != len(workSet):
+            print "bad!"
+            exit(1)
+        self.testSet.insert(0, name, arr) if not isTrain else self.trainSet.insert(0, name, arr)
+        
+    def applyCut(self, cut):
+        
+        if cut.find("<") != -1:
+            tmp = cut.split("<")
+            self.testSet = self.testSet[self.testSet[tmp[0]] < float(tmp[1])]
+            self.trainSet = self.trainSet[self.trainSet[tmp[0]] < float(tmp[1])]
+        elif cut.find(">") != -1:
+            tmp = cut.split(">")
+            self.testSet = self.testSet[self.testSet[tmp[0]] > float(tmp[1])]
+            self.trainSet = self.trainSet[self.trainSet[tmp[0]] > float(tmp[1])]
+        elif cut.find("==") != -1:
+            tmp = cut.split("==")
+            self.testSet = self.testSet[self.testSet[tmp[0]] == float(tmp[1])]
+            self.trainSet = self.trainSet[self.trainSet[tmp[0]] == float(tmp[1])]
+        else:
+            print "Problem!"
+            exit(1)
+            
+    def getSample(self, groups=None, isTrain=False):
+        if not groups:
+            groups = self.groups
+        workSet = self.testSet if not isTrain else self.trainSet
         finalSet = pandas.DataFrame()
         for group in groups:
+            tmpSet = workSet[workSet["classID"] == self.groups.index(group)]
             if finalSet.empty:
-                finalSet = workSet[self.groups.index(group)]
+                finalSet = tmpSet
             else:
-                finalSet = pandas.concat((finalSet, workSet[self.groups.index(group)]))
+                finalSet = pandas.concat((finalSet, tmpSet))
                 
         return finalSet
 
@@ -94,14 +119,13 @@ class MVAPlotter(object):
 
     def plotStoB(self, sig, bkg, var, bins, name, noSB=False, reverse=False):
         drt = 1 if not reverse else -1
-        sigHist = self.getHist([sig], var, bins)
-        bkgHist = self.getHist(bkg, var, bins)
-        nSig = [np.sum(sigHist[i::drt]) for i in range(len(bins))]
-        nBack = [np.sum(bkgHist[i::drt]) for i in range(len(bins))]
-        StoB  = [s/math.sqrt(b) if b > 0 else 0 for s, b in zip(nSig, nBack)]
-        StoSB = [s/math.sqrt(s+b) if b+s > 0 else 0 for s, b in zip(nSig, nBack)]
-        bins = bins[::drt]
-        
+        sigHist = self.getHist([sig], var, bins)[::drt]
+        bkgHist = self.getHist(bkg, var, bins)[::drt]
+        nSig = [np.sum(sigHist[i:]) for i in range(len(bins))]
+        nBack = [np.sum(bkgHist[i:]) for i in range(len(bins))]
+        StoB  = [s/math.sqrt(b) if b > 0 else 0 for s, b in zip(nSig, nBack)][::drt]
+        StoSB = [s/math.sqrt(s+b) if b+s > 0 else 0 for s, b in zip(nSig, nBack)][::drt]
+                
         StoBmb = bins[StoB.index(max(StoB))]
         StoSBmb = bins[StoSB.index(max(StoSB))]
 
@@ -120,9 +144,9 @@ class MVAPlotter(object):
         sigHist *= 1/np.sum(sigHist)
         bkgHist *= 1/np.sum(bkgHist)
         bkgName = "all" if len(bkg) > 1 else bkg[0]
-        bins = bins[::drt]
-        ax2.hist(x=bins[:-1], weights=sigHist, bins=bins, histtype="step", linewidth=1.5, color=self.colorDict[sig])
-        ax2.hist(x=bins[:-1], weights=bkgHist, bins=bins, histtype="step", linewidth=1.5, color=self.colorDict[bkgName])
+        bins = bins
+        ax2.hist(x=bins[:-1], weights=sigHist[::drt], bins=bins, histtype="step", linewidth=1.5, color=self.colorDict[sig])
+        ax2.hist(x=bins[:-1], weights=bkgHist[::drt], bins=bins, histtype="step", linewidth=1.5, color=self.colorDict[bkgName])
 
         ax2.set_ylim(top=1.2*max(max(sigHist), max(bkgHist)))
         
@@ -144,11 +168,15 @@ class MVAPlotter(object):
         return math.sqrt(2*(term1 - term2))
 
 
-    def makeROC(self, sig, bkg, name):
+    def makeROC(self, sig, bkg, var, name):
         finalSet = self.getSample([sig]+bkg)
         
-        pred = finalSet["BDT.{}".format(sig)].array
-        truth = [1 if i == self.groups.index(sig) else 0 for i in finalSet["classID"].array]
+        pred = finalSet["BDT.{}".format(var)].array
+        
+        if var != sig:
+            truth = [0 if i == self.groups.index(sig) else 1 for i in finalSet["classID"].array]
+        else:
+            truth = [1 if i == self.groups.index(sig) else 0 for i in finalSet["classID"].array]
         if name: name = "_{}".format(name)
                 
         fpr, tpr,_ = roc_curve(truth, pred)#, sample_weight=wgt)
@@ -161,7 +189,7 @@ class MVAPlotter(object):
         ax.set_xlabel("False Positive Rate", horizontalalignment='right', x=1.0)
         ax.set_ylabel("True Positive Rate", horizontalalignment='right', y=1.0)
         fig.tight_layout()
-        plt.savefig("{}/roc_curve{}.png".format(self.saveDir, name))
+        plt.savefig("{}/roc_curve.BDT.{}_{}.png".format(self.saveDir, var, name))
         if self.doShow: plt.show()
         plt.close()
 
