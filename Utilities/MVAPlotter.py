@@ -373,7 +373,7 @@ class MVAPlotter(object):
                 if var_details[2]:
                     hist = ROOT.TH1F("{}_{}".format(var_name, chan),
                                      "{}_{}".format(var_name, chan),
-                                     top-bot, bot, top)
+                                     int(top-bot), bot, top)
                 else:
                     hist = ROOT.TH1F("{}_{}".format(var_name, chan),
                                      "{}_{}".format(var_name, chan),

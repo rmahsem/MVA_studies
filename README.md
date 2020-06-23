@@ -1,13 +1,13 @@
 # Setup
-I would highly suggest making a virtual environment for this considering the code is in python 2.7 (only thing that works with ROOT on my machine).
+I would highly suggest making a virtual environment for this considering the code is in python 3, though this works with python2.7 now (especially if you are working in a CMSSW area)
 ```
-python2.7 -m virtualenv env
+python3 -m venv env
 source env/bin/activate
 pip install -r requirements.txt
 ```
 That should install all of the python packages. For the input files, simply grab from my public area and put in the main directory of this repo:
 ```
-/afs/cern.ch/user/d/dteague/public/For_Deborah/inputTrees.root
+/afs/cern.ch/user/d/dteague/public/For_Deborah/inputTrees_new.root
 ```
 Note: ttbar is having some problems so this branch may not work. It will be replaced by data driven events anyway though.
 
@@ -30,6 +30,5 @@ You can change the luminosity of the graphs by using the `-l/--lumi` option.
 
 ## Example usage
 ```sh
-python runMVA.py -t tmva -o firstTMVARun -l 140
-python runMVA.py -t xgb -o firstXGBoostRun -l 35.9
+python runMVA.py -o firstXGBoostRun -t
 ```
