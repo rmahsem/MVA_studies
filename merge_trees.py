@@ -26,9 +26,9 @@ class MyTH1(uproot_methods.classes.TH1.Methods, list):
         self._classname = "TH1F"
 
 
-infile3top = uproot.open("inputTrees/mvaThreeTop_2020.04.01.root")
-infileAll2 = uproot.open("inputTrees/mvaFourTop_2020.04.01.root")
-infileAll = uproot.open("inputTrees/mvaBackground_2020.04.01.root")
+infile3top = uproot.open("inputTrees/mvaThreeTop_2020.05.05.root")
+# infileAll2 = uproot.open("inputTrees/mvaFourTop_2020.05.05.root")
+infileAll = uproot.open("inputTrees/mvaBackground_2020.05.05.root")
 
 class upGet:
     def __init__(self, infile, innames, outname=None, xsec=1):
@@ -75,11 +75,13 @@ class upGet:
 
 allTrees = list()
 allTrees.append(upGet(infile3top, ["tttj2016", "tttj2017", "tttj2018"], "tttj", 0.000474))
-allTrees.append(upGet(infile3top, ["tttw2016", "tttw2017", "tttw2018"], "tttw", 0.000788))
-allTrees.append(upGet(infileAll2, "tttt2016", xsec=0.0092))
+# allTrees.append(upGet(infile3top, ["tttw2016", "tttw2017", "tttw2018"], "tttw", 0.000788))
+#allTrees.append(upGet(infileAll2, "tttt2016", xsec=0.0092))
 
-allNames = [["ttw", 0.2043], ["ttz", 0.2529], ["tth2nonbb", 0.2151] , ["ttwh", 0.001582], ["ttzz", 0.001982], ["ttzh", 0.001535], ["tthh", 0.000757], ["ttww", 0.01150], ["ttwz", 0.003884], ["www", 0.2086], ["wwz", 0.1651],  ["wzz", 0.5565],  ["zzz", 0.01398], ["zz4l_powheg", 1.256], ["wz3lnu_mg5amcnlo", 4.4297], ["ww_doubleScatter", 0.16975],  ["wpwpjj_ewk", 0.03711],  ["vh2nonbb", 0.9561], ["ttg_dilep", 0.632],  ["wwg", 0.2147],  ["wzg", 0.04123],  ["zg", 123.9], ["ttg_lepfromTbar", 0.769], ["ttg_lepfromT", 0.77],
-            ["ggh2zz", 0.01181],["wg", 405.271],["tzq", 0.0758],["st_twll", 0.01123],["DYm50", 6020.85], ["ttbar", 831.762], ["DYm10-50", 18610], ["wjets", 61334.9],
+allNames = [#["ttw", 0.2043],
+            ["ttz", 0.2529],
+    #["tth2nonbb", 0.2151] , ["ttwh", 0.001582], ["ttzz", 0.001982], ["ttzh", 0.001535], ["tthh", 0.000757], ["ttww", 0.01150], ["ttwz", 0.003884], ["www", 0.2086], ["wwz", 0.1651],  ["wzz", 0.5565],  ["zzz", 0.01398], ["zz4l_powheg", 1.256], ["wz3lnu_mg5amcnlo", 4.4297], ["ww_doubleScatter", 0.16975],  ["wpwpjj_ewk", 0.03711],  ["vh2nonbb", 0.9561], ["ttg_dilep", 0.632],  ["wwg", 0.2147],  ["wzg", 0.04123],  ["zg", 123.9], ["ttg_lepfromTbar", 0.769], ["ttg_lepfromT", 0.77],
+            #["ggh2zz", 0.01181],["wg", 405.271],["tzq", 0.0758],["st_twll", 0.01123],["DYm50", 6020.85], ["ttbar", 831.762], ["DYm10-50", 18610], ["wjets", 61334.9],
 ]
 #, 
 
@@ -92,7 +94,7 @@ branchDict["newWeight"] = "float32"
 branchDict["genWeight"] = "float32"
 
 
-with uproot.recreate("inputTrees_new.root") as f:
+with uproot.recreate("inputTrees_forRyan.root") as f:
     for tree in allTrees:
         print(tree.outname)
         f["sumweight_%s"%tree.outname] = tree.sumweight

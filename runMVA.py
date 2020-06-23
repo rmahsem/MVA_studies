@@ -1,27 +1,27 @@
 #!/usr/bin/env python
-import sys
-import os
-from os import environ, path
-import ROOT
+import os, math, sys
 import copy
 import numpy as np
-ROOT.gROOT.SetBatch(True)
 import argparse
-from Utilities.MvaMaker import TMVAMaker, XGBoostMaker
+from Utilities.MvaMaker import XGBoostMaker
 from Utilities.MVAPlotter import MVAPlotter
+import matplotlib.pyplot as plt
 
-#More info at: https://root.cern.ch/download/doc/tmva/TMVAUsersGuide.pdf
 
+# Command line arguments
 parser = argparse.ArgumentParser(description='Run TMVA over 4top')
 parser.add_argument('-o', '--out', required=True, type=str, help='output directory name')
-parser.add_argument('-t', '--train', type=str, default="", help="Run the training")
+parser.add_argument('-t', '--train', action="store_true", help="Run the training")
 parser.add_argument('--show', action="store_true", help='Set if one wants to see plots when they are made (default is to run in batch mode)')
 parser.add_argument('-l', '--lumi', type=float, default=140., help='Luminosity to use for graphs given in ifb: default 140')
-
 args = parser.parse_args()
 
+
+# Variables used in Training
 usevar = ["NJets", "NBJets", "HT", "MET", "l1Pt", "l2Pt", "lepMass", "centrality", "j1Pt", "j2Pt", "j3Pt", "j4Pt", "j5Pt", "j6Pt", "j7Pt", "j8Pt", "jetMass", "jetDR", "b1Pt", "b2Pt", "b3Pt", "b4Pt", "Shape1", "Shape2", "NlooseBJets", "NtightBJets", "NlooseLeps", "LepCos", "JetLep1_Cos", "JetLep2_Cos", "JetBJet_DR", "Lep_DR", "JetBJet_Cos"]
-specVar= ["newWeight", "DilepCharge"]
+
+# Variables outputed (not used in training)
+specVar= ["newWeight", "DilepCharge", "weight"]
 
 outname = args.out
 lumi=args.lumi*1000
@@ -35,87 +35,69 @@ if not os.path.isdir(outname):
 ##################
 
 groups = np.array([["Signal", ["tttj", "tttw"]],
-                   ["FourTop", ["tttt2016",]], 
-                   ["Background", ["ttw", "ttz", "tth2nonbb", "ttwh", "ttzz", "ttzh", "tthh", "ttww", "ttwz", "www", "wwz", "wzz", "zzz", "zz4l_powheg", "wz3lnu_mg5amcnlo", "ww_doubleScatter", "wpwpjj_ewk", "ttg_dilep", "wwg", "wzg", "ttg_lepfromTbar", "ttg_lepfromT","ggh2zz", "wg", "tzq", "st_twll", "DYm50",
-                   ]],
+                   ["FourTop", ["tttt2016",]],
+                   ["Background", ["ttw", "ttz", "tth2nonbb", "ttww", "ttg_lepfromTbar", "ttg_lepfromT", "ttwh", "ttzz", "ttzh",  "ttwz", "www", "wwz", "wzz", "zzz", "zz4l_powheg", "wz3lnu_mg5amcnlo", "ww_doubleScatter", "wpwpjj_ewk", "ttg_dilep", "wwg", "wzg","ggh2zz", "wg", "tzq", "st_twll", "DYm50",]],
 ])
-    
+
+inputTree = "inputTrees_new.root"
+groupOrdered = [item for sublist in [l[1] for l in groups] for item in sublist]
+
 ############
 # training #
 ############
 
 if args.train:
-    if args.train == "tmva":
-        mvaRunner = TMVAMaker("inputTrees_new.root", outname)
-    elif args.train == "xgb":
-        mvaRunner = XGBoostMaker("inputTrees_new.root", outname)
-    else:
-        raise Exception("Not implimented for mva type ({})".format(mvaType))
-
-
+    mvaRunner = XGBoostMaker(inputTree)       
     mvaRunner.addVariables(usevar, specVar)
     mvaRunner.addCut(cut)
     for groupName, samples in groups:
         mvaRunner.addGroup(samples, groupName)
+    
+    # Use this if multiclass Train
     mvaRunner.train()
-
+    # Use something like this if want binary (trains name against all)
+    #
+    # mvaRunner.train("Signal")
+    mvaRunner.output(outname)
 
 ###############
 # Make Plots  #
 ###############
-stobBins = np.linspace(0, 1, 50)
+stobBins = np.linspace(0.0, 1, 50)
+nbins2d=50
+stob2d = np.linspace(0.0,1.0,nbins2d+1)
 
 output = MVAPlotter(outname, groups.T[0], lumi)
-output.setDoShow(args.show)
-#output.applyCut("BDT.Background<0.1")
+output.set_show(args.show)
+gSet = output.get_sample()
 
-output.plotStoB("Signal", ["FourTop", "Background"], "BDT.Background", stobBins, "Background.SignalVsAllRev", reverse=True)
-output.plotStoB("Signal", ["FourTop", "Background"], "BDT.Signal", stobBins, "Signal.SignalVsAll")
-output.plotStoB("Signal", ["FourTop", "Background"], "BDT.FourTop", stobBins, "FourTop.SignalVsAll", reverse=True)
+output.write_out("preSelection_BDT.2020.06.03_single.root", inputTree)
+output.plot_fom("Signal", ["Background"], "BDT.Signal", stobBins, "")
+output.make_roc("Signal", ["FourTop", "Background"], "Signal", "SignalvsAll")
+output.print_info("BDT.Signal", groupOrdered)
+output.plot_all_shapes("NJets", np.linspace(0,15,16), "allGroups")
 
-
-output.plotFunc("Signal", ["FourTop", "Background"], "BDT.Background", np.linspace(0,1,40), "_SigVsAll")
-
-gSet = output.getSample()
-output.addVariable("test1", gSet["BDT.Background"]-gSet["BDT.FourTop"])
-output.addVariable("test2", gSet["BDT.Background"]-gSet["BDT.Signal"])
-output.addVariable("test3", gSet["BDT.FourTop"] - gSet["BDT.Signal"])
-
-output.plotFunc("Signal", ["FourTop"], "test1", np.linspace(-1,1,40), "")
-output.plotFunc("Signal", ["FourTop"], "test2", np.linspace(-1,1,40), "")
-output.plotFunc("Signal", ["FourTop"], "test3", np.linspace(-1,1,40), "")
+print("FourTop: ", output.approx_likelihood("Signal", ["Background", "FourTop"], "BDT.FourTop", stobBins))
+print("Background: ", output.approx_likelihood("Signal", ["Background", "FourTop"], "BDT.Background", stobBins))
 
 
+maxSBVal = output.plot_fom_2d("Signal", "BDT.Background", "BDT.FourTop", stob2d, stob2d)
 
-output.plotFunc("Signal", ["Background"], "BDT.Signal", np.linspace(0,1,40), "_SigVsBkg")
+output.plot_func_2d("Signal", "BDT.Background", "BDT.FourTop",
+                    stob2d, stob2d, "Signal", lines=maxSBVal[1:])
+output.plot_func_2d("Background", "BDT.Background", "BDT.FourTop",
+                    stob2d, stob2d, "Background", lines=maxSBVal[1:])
+output.plot_func_2d("FourTop", "BDT.Background", "BDT.FourTop",
+                    stob2d, stob2d, "FourTop", lines=maxSBVal[1:])
 
-output.makeROC("Signal", ["Background"], "Signal", "SigvsBkg")
-print "Signal: ", output.approxLikelihood("Signal", ["Background"], "BDT.Signal", stobBins)
+        
+output.apply_cut("BDT.FourTop>{}".format(maxSBVal[2]))
+output.apply_cut("BDT.Background>{}".format(maxSBVal[1]))
 
-output.plotFunc("Signal", ["FourTop"], "BDT.Signal", np.linspace(0,1,40), "_SigVsFourTop")
-output.plotFunc("Signal", ["FourTop"], "BDT.FourTop", np.linspace(0,1,40), "_SigVsFourTop")
-
-output.makeROC("Signal", ["FourTop", "Background"], "Signal", "SignalvsAll")
-output.makeROC("Signal", ["FourTop", "Background"], "Background", "SignalvsAll")
-output.makeROC("Signal", ["FourTop"], "FourTop", "SignalvsFourTop")
-# output.makeROC("Signal", ["FourTop"], "SignalvsFourTop")
-# output.makeROC("FourTop", ["Signal"], "FourTopvsSingal")
-# output.makeROC("FourTop", ["Signal", "Background"], "FourTopvsAll")
-# output.makeROC("Signal", ["FourTop", "Background"], "SignalvsAll")
-
-
-
-output.plotFunc("Signal", ["FourTop", "Background"], "BDT.Signal", np.linspace(0,1,40), "_SigVsAll")
-output.plotFunc("Signal", ["Background"], "BDT.Signal", np.linspace(0,1,40), "_SigVsBackground")
-output.plotFunc("Signal", ["FourTop", "Background"], "BDT.FourTop", np.linspace(0,1,40), "_SigVsAll")
-output.plotFunc("Signal", ["FourTop"], "BDT.Background", np.linspace(0,1,40), "_SigVsFourTop")
+output.write_out("postSelection_BDT.2020.06.03_SignalSingle.root", inputTree)
 
 
 
 
 
-print "Signal: ", output.approxLikelihood("Signal", ["FourTop", "Background"], "BDT.Signal", stobBins)
-print "FourTop: ", output.approxLikelihood("Signal", ["FourTop", "Background"], "BDT.FourTop", stobBins)
-print "Background: ", output.approxLikelihood("Signal", ["FourTop", "Background"], "BDT.Background", stobBins)
 
-    
